@@ -1,7 +1,6 @@
 pub const u64unix_ms = u64;
 pub const u64snowflake = u64;
 pub const u64bitmask = u64;
-pub const Client = *opaque {};
 pub const DiscordResponse = struct {
     code: i64, // HTTP status code (C 'long' → i64 on most platforms)
     reason: ?[*:0]const u8, // C 'const char*' → optional null-terminated string
@@ -2257,7 +2256,7 @@ pub const Interaction = extern struct {
     };
 
     pub fn respond(self: @This(), client: Client, response: Response, @"return": ?*Response.Return) !void {
-        try create_interaction_response(client, self.id, self.token, &response, @"return").toError();
+        try client.createInteractionResponse(self.id, self.token, &response, @"return").toError();
     }
 };
 pub const interaction_callback_data = extern struct {
@@ -2297,6 +2296,22 @@ pub const edit_followup_message = extern struct {
     allowed_mentions: [*c]allowed_mention = null,
     components: [*c]components = null,
     attachments: [*c]attachments = null,
+};
+
+pub const CreateGlobalApplicationCommand = struct {
+    name: [*:0]const u8,
+    description: [*:0]const u8,
+    options: application_command_options = .{},
+    default_member_permissions: u64bitmask = 0,
+    dm_permission: bool = false,
+    default_permission: bool = true,
+    type: ApplicationCommand.Type,
+
+    pub const Return = struct {
+        sync: ?*ApplicationCommand = null,
+        done: ?*const fn (cmd: *ApplicationCommand, user_data: ?*anyopaque) void = null,
+        user_data: ?*anyopaque = null,
+    };
 };
 
 pub const CreateGuildApplicationCommand = struct {
@@ -2597,256 +2612,263 @@ pub const ErrorCode = enum(i32) {
     }
 };
 
-// Function
-
-extern fn discord_init(token: [*:0]const u8) Client;
+extern fn discord_init(token: [*:0]const u8) ?Client;
 pub const init = discord_init;
 
-extern fn ccord_global_init() ErrorCode;
-pub const global_init = ccord_global_init;
+pub const Client = *opaque {
+    extern fn discord_cleanup(client: Client) void;
+    pub const cleanup = discord_cleanup;
 
-extern fn ccord_global_cleanup() void;
-pub const global_cleanup = ccord_global_cleanup;
+    extern fn discord_set_data(client: Client, data: *anyopaque) ?*anyopaque;
+    pub fn setData(client: Client, comptime T: type, data: *T) void {
+        _ = discord_set_data(client, @ptrCast(@alignCast(data)));
+    }
 
-extern fn discord_return_error(client: Client, err: [*:0]const u8, code: ErrorCode) ErrorCode;
-pub const return_error = discord_return_error;
+    extern fn discord_get_data(client: Client) ?*anyopaque;
+    pub fn getData(client: Client, comptime T: type) ?*T {
+        return @ptrCast(@alignCast(discord_get_data(client)));
+    }
 
-extern fn discord_strerror(code: ErrorCode, client: Client) [*:0]const u8;
-pub const strerror = discord_strerror;
+    extern fn discord_return_error(client: Client, err: [*:0]const u8, code: ErrorCode) ErrorCode;
+    pub const returnError = discord_return_error;
 
-extern fn discord_config_init(config_file: [*:0]const u8) Client;
-pub const config_init = discord_config_init;
+    extern fn discord_strerror(code: ErrorCode, client: Client) [*:0]const u8;
+    pub const strerror = discord_strerror;
 
-extern fn discord_cleanup(client: Client) void;
-pub const cleanup = discord_cleanup;
+    extern fn discord_config_init(config_file: [*:0]const u8) Client;
+    pub const configInit = discord_config_init;
 
-extern fn discord_run(client: Client) ErrorCode;
-pub const run = discord_run;
+    extern fn discord_run(client: Client) ErrorCode;
+    pub const run = discord_run;
 
-extern fn discord_create_guild_application_command(client: Client, application_id: u64snowflake, guild_id: u64snowflake, params: *CreateGuildApplicationCommand, ret: ?*CreateGuildApplicationCommand.Return) ErrorCode;
-pub const create_guild_application_command = discord_create_guild_application_command;
+    extern fn discord_create_guild_application_command(client: Client, application_id: u64snowflake, guild_id: u64snowflake, params: *CreateGuildApplicationCommand, ret: ?*CreateGuildApplicationCommand.Return) ErrorCode;
+    pub const createGuildApplicationCommand = discord_create_guild_application_command;
 
-extern fn discord_create_message(client: Client, channel_id: u64snowflake, params: *Message.Create, ret: ?*Message.Return) ErrorCode;
-pub const create_message = discord_create_message;
+    extern fn discord_create_global_application_command(client: Client, application_id: u64snowflake, params: *const CreateGlobalApplicationCommand, ret: ?*CreateGlobalApplicationCommand.Return) ErrorCode;
+    pub const createGlobalApplicationCommand = discord_create_global_application_command;
 
-extern fn discord_create_interaction_response(client: Client, interaction_id: u64snowflake, interaction_token: [*:0]const u8, params: *const Interaction.Response, ret: ?*Interaction.Response.Return) ErrorCode;
-pub const create_interaction_response = discord_create_interaction_response;
+    extern fn discord_create_message(client: Client, channel_id: u64snowflake, params: *Message.Create, ret: ?*Message.Return) ErrorCode;
+    pub const createMessage = discord_create_message;
 
-extern fn discord_request_guild_members(client: Client, request: ?*RequestGuildMembers) void;
-pub const request_guild_members = discord_request_guild_members;
+    extern fn discord_create_interaction_response(client: Client, interaction_id: u64snowflake, interaction_token: [*:0]const u8, params: *const Interaction.Response, ret: ?*Interaction.Response.Return) ErrorCode;
+    pub const createInteractionResponse = discord_create_interaction_response;
 
-extern fn discord_update_voice_state(client: Client, update: ?*UpdateVoiceState) void;
-pub const update_voice_state = discord_update_voice_state;
+    extern fn discord_request_guild_members(client: Client, request: ?*RequestGuildMembers) void;
+    pub const requestGuildMembers = discord_request_guild_members;
 
-extern fn discord_update_presence(client: Client, presence: ?*presence_update) void;
-pub const update_presence = discord_update_presence;
+    extern fn discord_update_voice_state(client: Client, update: ?*UpdateVoiceState) void;
+    pub const updateVoiceState = discord_update_voice_state;
 
-extern fn discord_set_presence(client: Client, presence: ?*presence_update) void;
-pub const set_presence = discord_set_presence;
+    extern fn discord_update_presence(client: Client, presence: ?*presence_update) void;
+    pub const updatePresence = discord_update_presence;
 
-extern fn discord_set_event_scheduler(client: Client, callback: discord_ev_scheduler) void;
-pub const set_event_scheduler = discord_set_event_scheduler;
+    extern fn discord_set_presence(client: Client, presence: ?*presence_update) void;
+    pub const setPresence = discord_set_presence;
 
-extern fn discord_add_intents(client: Client, code: u64) void;
-pub const add_intents = discord_add_intents;
+    extern fn discord_set_event_scheduler(client: Client, callback: discord_ev_scheduler) void;
+    pub const setEventScheduler = discord_set_event_scheduler;
 
-extern fn discord_remove_intents(client: Client, code: u64) void;
-pub const remove_intents = discord_remove_intents;
+    extern fn discord_add_intents(client: Client, code: u64) void;
+    pub const addIntents = discord_add_intents;
 
-extern fn discord_set_prefix(client: Client, prefix: [*c]const u8) void;
-pub const set_prefix = discord_set_prefix;
+    extern fn discord_remove_intents(client: Client, code: u64) void;
+    pub const removeIntents = discord_remove_intents;
 
-extern fn discord_set_on_command(client: Client, command: [*c]u8, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
-pub const set_on_command = discord_set_on_command;
+    extern fn discord_set_prefix(client: Client, prefix: [*c]const u8) void;
+    pub const setPrefix = discord_set_prefix;
 
-extern fn discord_set_on_commands(client: Client, commands: [*c]const [*c]u8, amount: c_int, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
-pub const set_on_commands = discord_set_on_commands;
+    extern fn discord_set_on_command(client: Client, command: [*c]u8, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
+    pub const setOnCommand = discord_set_on_command;
 
-extern fn discord_set_next_wakeup(client: Client, delay: i64) void;
-pub const set_next_wakeup = discord_set_next_wakeup;
+    extern fn discord_set_on_commands(client: Client, commands: [*c]const [*c]u8, amount: c_int, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
+    pub const setOnCommands = discord_set_on_commands;
 
-extern fn discord_set_on_wakeup(client: Client, callback: ?*const fn (client: Client) callconv(.c) void) void;
-pub const set_on_wakeup = discord_set_on_wakeup;
+    extern fn discord_set_next_wakeup(client: Client, delay: i64) void;
+    pub const setNextWakeup = discord_set_next_wakeup;
 
-extern fn discord_set_on_idle(client: Client, callback: ?*const fn (client: Client) callconv(.c) void) void;
-pub const set_on_idle = discord_set_on_idle;
+    extern fn discord_set_on_wakeup(client: Client, callback: ?*const fn (client: Client) callconv(.c) void) void;
+    pub const setOnWakeup = discord_set_on_wakeup;
 
-extern fn discord_set_on_cycle(client: Client, callback: ?*const fn (client: Client) callconv(.c) void) void;
-pub const set_on_cycle = discord_set_on_cycle;
+    extern fn discord_set_on_idle(client: Client, callback: ?*const fn (client: Client) callconv(.c) void) void;
+    pub const setOnIdle = discord_set_on_idle;
 
-extern fn discord_set_on_ready(client: Client, callback: ?*const fn (client: Client, event: *const Ready) callconv(.c) void) void;
-pub const set_on_ready = discord_set_on_ready;
+    extern fn discord_set_on_cycle(client: Client, callback: ?*const fn (client: Client) callconv(.c) void) void;
+    pub const setOnCycle = discord_set_on_cycle;
 
-extern fn discord_set_on_application_command_permissions_update(client: Client, callback: ?*const fn (client: Client, event: *const application_command_permissions) callconv(.c) void) void;
-pub const set_on_application_command_permissions_update = discord_set_on_application_command_permissions_update;
+    extern fn discord_set_on_ready(client: Client, callback: ?*const fn (client: Client, event: *const Ready) callconv(.c) void) void;
+    pub const setOnReady = discord_set_on_ready;
 
-extern fn discord_set_on_auto_moderation_rule_create(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_rule) callconv(.c) void) void;
-pub const set_on_auto_moderation_rule_create = discord_set_on_auto_moderation_rule_create;
+    extern fn discord_set_on_application_command_permissions_update(client: Client, callback: ?*const fn (client: Client, event: *const application_command_permissions) callconv(.c) void) void;
+    pub const setOnApplicationCommandPermissionsUpdate = discord_set_on_application_command_permissions_update;
 
-extern fn discord_set_on_auto_moderation_rule_update(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_rule) callconv(.c) void) void;
-pub const set_on_auto_moderation_rule_update = discord_set_on_auto_moderation_rule_update;
+    extern fn discord_set_on_auto_moderation_rule_create(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_rule) callconv(.c) void) void;
+    pub const setOnAutoModerationRuleCreate = discord_set_on_auto_moderation_rule_create;
 
-extern fn discord_set_on_auto_moderation_rule_delete(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_rule) callconv(.c) void) void;
-pub const set_on_auto_moderation_rule_delete = discord_set_on_auto_moderation_rule_delete;
+    extern fn discord_set_on_auto_moderation_rule_update(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_rule) callconv(.c) void) void;
+    pub const setOnAutoModerationRuleUpdate = discord_set_on_auto_moderation_rule_update;
 
-extern fn discord_set_on_auto_moderation_action_execution(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_action_execution) callconv(.c) void) void;
-pub const set_on_auto_moderation_action_execution = discord_set_on_auto_moderation_action_execution;
+    extern fn discord_set_on_auto_moderation_rule_delete(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_rule) callconv(.c) void) void;
+    pub const setOnAutoModerationRuleDelete = discord_set_on_auto_moderation_rule_delete;
 
-extern fn discord_set_on_channel_create(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
-pub const set_on_channel_create = discord_set_on_channel_create;
+    extern fn discord_set_on_auto_moderation_action_execution(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_action_execution) callconv(.c) void) void;
+    pub const setOnAutoModerationActionExecution = discord_set_on_auto_moderation_action_execution;
 
-extern fn discord_set_on_channel_update(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
-pub const set_on_channel_update = discord_set_on_channel_update;
+    extern fn discord_set_on_channel_create(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
+    pub const setOnChannelCreate = discord_set_on_channel_create;
 
-extern fn discord_set_on_channel_delete(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
-pub const set_on_channel_delete = discord_set_on_channel_delete;
+    extern fn discord_set_on_channel_update(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
+    pub const setOnChannelUpdate = discord_set_on_channel_update;
 
-extern fn discord_set_on_channel_pins_update(client: Client, callback: ?*const fn (client: Client, event: *const channel_pins_update) callconv(.c) void) void;
-pub const set_on_channel_pins_update = discord_set_on_channel_pins_update;
+    extern fn discord_set_on_channel_delete(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
+    pub const setOnChannelDelete = discord_set_on_channel_delete;
 
-extern fn discord_set_on_thread_create(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
-pub const set_on_thread_create = discord_set_on_thread_create;
+    extern fn discord_set_on_channel_pins_update(client: Client, callback: ?*const fn (client: Client, event: *const channel_pins_update) callconv(.c) void) void;
+    pub const setOnChannelPinsUpdate = discord_set_on_channel_pins_update;
 
-extern fn discord_set_on_thread_update(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
-pub const set_on_thread_update = discord_set_on_thread_update;
+    extern fn discord_set_on_thread_create(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
+    pub const setOnThreadCreate = discord_set_on_thread_create;
 
-extern fn discord_set_on_thread_delete(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
-pub const set_on_thread_delete = discord_set_on_thread_delete;
+    extern fn discord_set_on_thread_update(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
+    pub const setOnThreadUpdate = discord_set_on_thread_update;
 
-extern fn discord_set_on_thread_list_sync(client: Client, callback: ?*const fn (client: Client, event: *const thread_list_sync) callconv(.c) void) void;
-pub const set_on_thread_list_sync = discord_set_on_thread_list_sync;
+    extern fn discord_set_on_thread_delete(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
+    pub const setOnThreadDelete = discord_set_on_thread_delete;
 
-extern fn discord_set_on_thread_member_update(client: Client, callback: ?*const fn (client: Client, event: *const thread_member) callconv(.c) void) void;
-pub const set_on_thread_member_update = discord_set_on_thread_member_update;
+    extern fn discord_set_on_thread_list_sync(client: Client, callback: ?*const fn (client: Client, event: *const thread_list_sync) callconv(.c) void) void;
+    pub const setOnThreadListSync = discord_set_on_thread_list_sync;
 
-extern fn discord_set_on_thread_members_update(client: Client, callback: ?*const fn (client: Client, event: *const thread_members_update) callconv(.c) void) void;
-pub const set_on_thread_members_update = discord_set_on_thread_members_update;
+    extern fn discord_set_on_thread_member_update(client: Client, callback: ?*const fn (client: Client, event: *const thread_member) callconv(.c) void) void;
+    pub const setOnThreadMemberUpdate = discord_set_on_thread_member_update;
 
-extern fn discord_set_on_guild_create(client: Client, callback: ?*const fn (client: Client, event: *const guild) callconv(.c) void) void;
-pub const set_on_guild_create = discord_set_on_guild_create;
+    extern fn discord_set_on_thread_members_update(client: Client, callback: ?*const fn (client: Client, event: *const thread_members_update) callconv(.c) void) void;
+    pub const setOnThreadMembersUpdate = discord_set_on_thread_members_update;
 
-extern fn discord_set_on_guild_update(client: Client, callback: ?*const fn (client: Client, event: *const guild) callconv(.c) void) void;
-pub const set_on_guild_update = discord_set_on_guild_update;
+    extern fn discord_set_on_guild_create(client: Client, callback: ?*const fn (client: Client, event: *const guild) callconv(.c) void) void;
+    pub const setOnGuildCreate = discord_set_on_guild_create;
 
-extern fn discord_set_on_guild_delete(client: Client, callback: ?*const fn (client: Client, event: *const guild) callconv(.c) void) void;
-pub const set_on_guild_delete = discord_set_on_guild_delete;
+    extern fn discord_set_on_guild_update(client: Client, callback: ?*const fn (client: Client, event: *const guild) callconv(.c) void) void;
+    pub const setOnGuildUpdate = discord_set_on_guild_update;
 
-extern fn discord_set_on_guild_ban_add(client: Client, callback: ?*const fn (client: Client, event: *const guild_ban_add) callconv(.c) void) void;
-pub const set_on_guild_ban_add = discord_set_on_guild_ban_add;
+    extern fn discord_set_on_guild_delete(client: Client, callback: ?*const fn (client: Client, event: *const guild) callconv(.c) void) void;
+    pub const setOnGuildDelete = discord_set_on_guild_delete;
 
-extern fn discord_set_on_guild_ban_remove(client: Client, callback: ?*const fn (client: Client, event: *const guild_ban_remove) callconv(.c) void) void;
-pub const set_on_guild_ban_remove = discord_set_on_guild_ban_remove;
+    extern fn discord_set_on_guild_ban_add(client: Client, callback: ?*const fn (client: Client, event: *const guild_ban_add) callconv(.c) void) void;
+    pub const setOnGuildBanAdd = discord_set_on_guild_ban_add;
 
-extern fn discord_set_on_guild_emojis_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_emojis_update) callconv(.c) void) void;
-pub const set_on_guild_emojis_update = discord_set_on_guild_emojis_update;
+    extern fn discord_set_on_guild_ban_remove(client: Client, callback: ?*const fn (client: Client, event: *const guild_ban_remove) callconv(.c) void) void;
+    pub const setOnGuildBanRemove = discord_set_on_guild_ban_remove;
 
-extern fn discord_set_on_guild_stickers_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_stickers_update) callconv(.c) void) void;
-pub const set_on_guild_stickers_update = discord_set_on_guild_stickers_update;
+    extern fn discord_set_on_guild_emojis_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_emojis_update) callconv(.c) void) void;
+    pub const setOnGuildEmojisUpdate = discord_set_on_guild_emojis_update;
 
-extern fn discord_set_on_guild_integrations_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_integrations_update) callconv(.c) void) void;
-pub const set_on_guild_integrations_update = discord_set_on_guild_integrations_update;
+    extern fn discord_set_on_guild_stickers_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_stickers_update) callconv(.c) void) void;
+    pub const setOnGuildStickersUpdate = discord_set_on_guild_stickers_update;
 
-extern fn discord_set_on_guild_member_add(client: Client, callback: ?*const fn (client: Client, event: *const guild_member) callconv(.c) void) void;
-pub const set_on_guild_member_add = discord_set_on_guild_member_add;
+    extern fn discord_set_on_guild_integrations_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_integrations_update) callconv(.c) void) void;
+    pub const setOnGuildIntegrationsUpdate = discord_set_on_guild_integrations_update;
 
-extern fn discord_set_on_guild_member_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_member_update) callconv(.c) void) void;
-pub const set_on_guild_member_update = discord_set_on_guild_member_update;
+    extern fn discord_set_on_guild_member_add(client: Client, callback: ?*const fn (client: Client, event: *const guild_member) callconv(.c) void) void;
+    pub const setOnGuildMemberAdd = discord_set_on_guild_member_add;
 
-extern fn discord_set_on_guild_member_remove(client: Client, callback: ?*const fn (client: Client, event: *const guild_member_remove) callconv(.c) void) void;
-pub const set_on_guild_member_remove = discord_set_on_guild_member_remove;
+    extern fn discord_set_on_guild_member_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_member_update) callconv(.c) void) void;
+    pub const setOnGuildMemberUpdate = discord_set_on_guild_member_update;
 
-extern fn discord_set_on_guild_members_chunk(client: Client, callback: ?*const fn (client: Client, event: *const guild_members_chunk) callconv(.c) void) void;
-pub const set_on_guild_members_chunk = discord_set_on_guild_members_chunk;
+    extern fn discord_set_on_guild_member_remove(client: Client, callback: ?*const fn (client: Client, event: *const guild_member_remove) callconv(.c) void) void;
+    pub const setOnGuildMemberRemove = discord_set_on_guild_member_remove;
 
-extern fn discord_set_on_guild_role_create(client: Client, callback: ?*const fn (client: Client, event: *const guild_role_create) callconv(.c) void) void;
-pub const set_on_guild_role_create = discord_set_on_guild_role_create;
+    extern fn discord_set_on_guild_members_chunk(client: Client, callback: ?*const fn (client: Client, event: *const guild_members_chunk) callconv(.c) void) void;
+    pub const setOnGuildMembersChunk = discord_set_on_guild_members_chunk;
 
-extern fn discord_set_on_guild_role_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_role_update) callconv(.c) void) void;
-pub const set_on_guild_role_update = discord_set_on_guild_role_update;
+    extern fn discord_set_on_guild_role_create(client: Client, callback: ?*const fn (client: Client, event: *const guild_role_create) callconv(.c) void) void;
+    pub const setOnGuildRoleCreate = discord_set_on_guild_role_create;
 
-extern fn discord_set_on_guild_role_delete(client: Client, callback: ?*const fn (client: Client, event: *const guild_role_delete) callconv(.c) void) void;
-pub const set_on_guild_role_delete = discord_set_on_guild_role_delete;
+    extern fn discord_set_on_guild_role_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_role_update) callconv(.c) void) void;
+    pub const setOnGuildRoleUpdate = discord_set_on_guild_role_update;
 
-extern fn discord_set_on_guild_scheduled_event_create(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event) callconv(.c) void) void;
-pub const set_on_guild_scheduled_event_create = discord_set_on_guild_scheduled_event_create;
+    extern fn discord_set_on_guild_role_delete(client: Client, callback: ?*const fn (client: Client, event: *const guild_role_delete) callconv(.c) void) void;
+    pub const setOnGuildRoleDelete = discord_set_on_guild_role_delete;
 
-extern fn discord_set_on_guild_scheduled_event_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event) callconv(.c) void) void;
-pub const set_on_guild_scheduled_event_update = discord_set_on_guild_scheduled_event_update;
+    extern fn discord_set_on_guild_scheduled_event_create(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event) callconv(.c) void) void;
+    pub const setOnGuildScheduledEventCreate = discord_set_on_guild_scheduled_event_create;
 
-extern fn discord_set_on_guild_scheduled_event_delete(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event) callconv(.c) void) void;
-pub const set_on_guild_scheduled_event_delete = discord_set_on_guild_scheduled_event_delete;
+    extern fn discord_set_on_guild_scheduled_event_update(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event) callconv(.c) void) void;
+    pub const setOnGuildScheduledEventUpdate = discord_set_on_guild_scheduled_event_update;
 
-extern fn discord_set_on_guild_scheduled_event_user_add(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event_user_add) callconv(.c) void) void;
-pub const set_on_guild_scheduled_event_user_add = discord_set_on_guild_scheduled_event_user_add;
+    extern fn discord_set_on_guild_scheduled_event_delete(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event) callconv(.c) void) void;
+    pub const setOnGuildScheduledEventDelete = discord_set_on_guild_scheduled_event_delete;
 
-extern fn discord_set_on_guild_scheduled_event_user_remove(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event_user_remove) callconv(.c) void) void;
-pub const set_on_guild_scheduled_event_user_remove = discord_set_on_guild_scheduled_event_user_remove;
+    extern fn discord_set_on_guild_scheduled_event_user_add(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event_user_add) callconv(.c) void) void;
+    pub const setOnGuildScheduledEventUserAdd = discord_set_on_guild_scheduled_event_user_add;
 
-extern fn discord_set_on_integration_create(client: Client, callback: ?*const fn (client: Client, event: *const integration) callconv(.c) void) void;
-pub const set_on_integration_create = discord_set_on_integration_create;
+    extern fn discord_set_on_guild_scheduled_event_user_remove(client: Client, callback: ?*const fn (client: Client, event: *const guild_scheduled_event_user_remove) callconv(.c) void) void;
+    pub const setOnGuildScheduledEventUserRemove = discord_set_on_guild_scheduled_event_user_remove;
 
-extern fn discord_set_on_integration_update(client: Client, callback: ?*const fn (client: Client, event: *const integration) callconv(.c) void) void;
-pub const set_on_integration_update = discord_set_on_integration_update;
+    extern fn discord_set_on_integration_create(client: Client, callback: ?*const fn (client: Client, event: *const integration) callconv(.c) void) void;
+    pub const setOnIntegrationCreate = discord_set_on_integration_create;
 
-extern fn discord_set_on_integration_delete(client: Client, callback: ?*const fn (client: Client, event: *const integration_delete) callconv(.c) void) void;
-pub const set_on_integration_delete = discord_set_on_integration_delete;
+    extern fn discord_set_on_integration_update(client: Client, callback: ?*const fn (client: Client, event: *const integration) callconv(.c) void) void;
+    pub const setOnIntegrationUpdate = discord_set_on_integration_update;
 
-extern fn discord_set_on_interaction_create(client: Client, callback: ?*const fn (client: Client, event: *const Interaction) callconv(.c) void) void;
-pub const set_on_interaction_create = discord_set_on_interaction_create;
+    extern fn discord_set_on_integration_delete(client: Client, callback: ?*const fn (client: Client, event: *const integration_delete) callconv(.c) void) void;
+    pub const setOnIntegrationDelete = discord_set_on_integration_delete;
 
-extern fn discord_set_on_invite_create(client: Client, callback: ?*const fn (client: Client, event: *const invite_create) callconv(.c) void) void;
-pub const set_on_invite_create = discord_set_on_invite_create;
+    extern fn discord_set_on_interaction_create(client: Client, callback: ?*const fn (client: Client, event: *const Interaction) callconv(.c) void) void;
+    pub const setOnInteractionCreate = discord_set_on_interaction_create;
 
-extern fn discord_set_on_invite_delete(client: Client, callback: ?*const fn (client: Client, event: *const invite_delete) callconv(.c) void) void;
-pub const set_on_invite_delete = discord_set_on_invite_delete;
+    extern fn discord_set_on_invite_create(client: Client, callback: ?*const fn (client: Client, event: *const invite_create) callconv(.c) void) void;
+    pub const setOnInviteCreate = discord_set_on_invite_create;
 
-extern fn discord_set_on_message_create(client: Client, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
-pub const set_on_message_create = discord_set_on_message_create;
+    extern fn discord_set_on_invite_delete(client: Client, callback: ?*const fn (client: Client, event: *const invite_delete) callconv(.c) void) void;
+    pub const setOnInviteDelete = discord_set_on_invite_delete;
 
-extern fn discord_set_on_message_update(client: Client, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
-pub const set_on_message_update = discord_set_on_message_update;
+    extern fn discord_set_on_message_create(client: Client, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
+    pub const setOnMessageCreate = discord_set_on_message_create;
 
-extern fn discord_set_on_message_delete(client: Client, callback: ?*const fn (client: Client, event: *const message_delete) callconv(.c) void) void;
-pub const set_on_message_delete = discord_set_on_message_delete;
+    extern fn discord_set_on_message_update(client: Client, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
+    pub const setOnMessageUpdate = discord_set_on_message_update;
 
-extern fn discord_set_on_message_delete_bulk(client: Client, callback: ?*const fn (client: Client, event: *const message_delete_bulk) callconv(.c) void) void;
-pub const set_on_message_delete_bulk = discord_set_on_message_delete_bulk;
+    extern fn discord_set_on_message_delete(client: Client, callback: ?*const fn (client: Client, event: *const message_delete) callconv(.c) void) void;
+    pub const setOnMessageDelete = discord_set_on_message_delete;
 
-extern fn discord_set_on_message_reaction_add(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_add) callconv(.c) void) void;
-pub const set_on_message_reaction_add = discord_set_on_message_reaction_add;
+    extern fn discord_set_on_message_delete_bulk(client: Client, callback: ?*const fn (client: Client, event: *const message_delete_bulk) callconv(.c) void) void;
+    pub const setOnMessageDeleteBulk = discord_set_on_message_delete_bulk;
 
-extern fn discord_set_on_message_reaction_remove(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove) callconv(.c) void) void;
-pub const set_on_message_reaction_remove = discord_set_on_message_reaction_remove;
+    extern fn discord_set_on_message_reaction_add(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_add) callconv(.c) void) void;
+    pub const setOnMessageReactionAdd = discord_set_on_message_reaction_add;
 
-extern fn discord_set_on_message_reaction_remove_all(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove_all) callconv(.c) void) void;
-pub const set_on_message_reaction_remove_all = discord_set_on_message_reaction_remove_all;
+    extern fn discord_set_on_message_reaction_remove(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove) callconv(.c) void) void;
+    pub const setOnMessageReactionRemove = discord_set_on_message_reaction_remove;
 
-extern fn discord_set_on_message_reaction_remove_emoji(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove_emoji) callconv(.c) void) void;
-pub const set_on_message_reaction_remove_emoji = discord_set_on_message_reaction_remove_emoji;
+    extern fn discord_set_on_message_reaction_remove_all(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove_all) callconv(.c) void) void;
+    pub const setOnMessageReactionRemoveAll = discord_set_on_message_reaction_remove_all;
 
-extern fn discord_set_on_presence_update(client: Client, callback: ?*const fn (client: Client, event: *const presence_update) callconv(.c) void) void;
-pub const set_on_presence_update = discord_set_on_presence_update;
+    extern fn discord_set_on_message_reaction_remove_emoji(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove_emoji) callconv(.c) void) void;
+    pub const setOnMessageReactionRemoveEmoji = discord_set_on_message_reaction_remove_emoji;
 
-extern fn discord_set_on_stage_instance_create(client: Client, callback: ?*const fn (client: Client, event: *const stage_instance) callconv(.c) void) void;
-pub const set_on_stage_instance_create = discord_set_on_stage_instance_create;
+    extern fn discord_set_on_presence_update(client: Client, callback: ?*const fn (client: Client, event: *const presence_update) callconv(.c) void) void;
+    pub const setOnPresenceUpdate = discord_set_on_presence_update;
 
-extern fn discord_set_on_stage_instance_update(client: Client, callback: ?*const fn (client: Client, event: *const stage_instance) callconv(.c) void) void;
-pub const set_on_stage_instance_update = discord_set_on_stage_instance_update;
+    extern fn discord_set_on_stage_instance_create(client: Client, callback: ?*const fn (client: Client, event: *const stage_instance) callconv(.c) void) void;
+    pub const setOnStageInstanceCreate = discord_set_on_stage_instance_create;
 
-extern fn discord_set_on_stage_instance_delete(client: Client, callback: ?*const fn (client: Client, event: *const stage_instance) callconv(.c) void) void;
-pub const set_on_stage_instance_delete = discord_set_on_stage_instance_delete;
+    extern fn discord_set_on_stage_instance_update(client: Client, callback: ?*const fn (client: Client, event: *const stage_instance) callconv(.c) void) void;
+    pub const setOnStageInstanceUpdate = discord_set_on_stage_instance_update;
 
-extern fn discord_set_on_typing_start(client: Client, callback: ?*const fn (client: Client, event: *const typing_start) callconv(.c) void) void;
-pub const set_on_typing_start = discord_set_on_typing_start;
+    extern fn discord_set_on_stage_instance_delete(client: Client, callback: ?*const fn (client: Client, event: *const stage_instance) callconv(.c) void) void;
+    pub const setOnStageInstanceDelete = discord_set_on_stage_instance_delete;
 
-extern fn discord_set_on_user_update(client: Client, callback: ?*const fn (client: Client, event: *const User) callconv(.c) void) void;
-pub const set_on_user_update = discord_set_on_user_update;
+    extern fn discord_set_on_typing_start(client: Client, callback: ?*const fn (client: Client, event: *const typing_start) callconv(.c) void) void;
+    pub const setOnTypingStart = discord_set_on_typing_start;
 
-extern fn discord_set_on_voice_state_update(client: Client, callback: ?*const fn (client: Client, event: *const voice_state) callconv(.c) void) void;
-pub const set_on_voice_state_update = discord_set_on_voice_state_update;
+    extern fn discord_set_on_user_update(client: Client, callback: ?*const fn (client: Client, event: *const User) callconv(.c) void) void;
+    pub const setOnUserUpdate = discord_set_on_user_update;
 
-extern fn discord_set_on_voice_server_update(client: Client, callback: ?*const fn (client: Client, event: *const voice_server_update) callconv(.c) void) void;
-pub const set_on_voice_server_update = discord_set_on_voice_server_update;
+    extern fn discord_set_on_voice_state_update(client: Client, callback: ?*const fn (client: Client, event: *const voice_state) callconv(.c) void) void;
+    pub const setOnVoiceStateUpdate = discord_set_on_voice_state_update;
 
-extern fn discord_set_on_webhooks_update(client: Client, callback: ?*const fn (client: Client, event: *const webhooks_update) callconv(.c) void) void;
-pub const set_on_webhooks_update = discord_set_on_webhooks_update;
+    extern fn discord_set_on_voice_server_update(client: Client, callback: ?*const fn (client: Client, event: *const voice_server_update) callconv(.c) void) void;
+    pub const setOnVoiceServerUpdate = discord_set_on_voice_server_update;
+
+    extern fn discord_set_on_webhooks_update(client: Client, callback: ?*const fn (client: Client, event: *const webhooks_update) callconv(.c) void) void;
+    pub const setOnWebhooksUpdate = discord_set_on_webhooks_update;
+};
