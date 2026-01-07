@@ -42,20 +42,3 @@ pub fn build(b: *std.Build) void {
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);
 }
-
-pub fn addCSourceFilesRecursive(b: *std.Build, module: *std.Build.Module, path: []const u8) !void {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
-
-    var it = dir.iterate();
-    while (try it.next()) |file| {
-        const new_path = try std.fs.path.join(b.allocator, &.{ path, file.name });
-        defer b.allocator.free(new_path);
-        std.debug.print("{s}\n", .{new_path});
-        switch (file.kind) {
-            .file => if (std.mem.endsWith(u8, file.name, ".c")) module.addCSourceFile(.{ .file = .{ .cwd_relative = new_path } }),
-            .directory, .sym_link => try addCSourceFilesRecursive(b, module, new_path),
-            else => {},
-        }
-    }
-}

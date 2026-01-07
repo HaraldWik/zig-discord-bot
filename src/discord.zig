@@ -53,12 +53,12 @@ pub const premium_types = enum(c_uint) {
     NITRO = 2,
 };
 pub const User = extern struct {
-    id: u64snowflake = 0,
+    id: u64snowflake,
     name: [*:0]const u8,
     discriminator: [*c]u8 = null,
     avatar: [*c]u8 = null,
-    bot: bool = false,
-    System: bool = false,
+    is_bot: bool = false,
+    system: bool = false,
     mfa_enabled: bool = false,
     banner: [*c]u8 = null,
     accent_color: c_int = 0,
@@ -68,6 +68,12 @@ pub const User = extern struct {
     flags: u64bitmask = 0,
     premium_type: premium_types,
     public_flags: u64bitmask = 0,
+
+    pub const Return = struct {
+        sync: ?*User = null,
+        done: ?*const fn (user: *User, user_data: ?*anyopaque) callconv(.c) void = null,
+        user_data: ?*anyopaque = null,
+    };
 };
 pub const membership_state = enum(c_uint) {
     INVITED = 1,
@@ -1120,9 +1126,9 @@ pub const Message = extern struct {
     webhook_id: u64snowflake = 0,
     type: Type,
     activity: [*c]message_activity = null,
-    application: [*c]application = null,
+    application: *application,
     application_id: u64snowflake = 0,
-    message_reference: [*c]message_reference = null,
+    message_reference: ?*message_reference = null,
     flags: u64bitmask = 0,
     referenced_message: ?*Message = null,
     interaction: *message_interaction,
@@ -1169,9 +1175,9 @@ pub const Message = extern struct {
     };
 
     pub const Create = extern struct {
-        content: [*:0]const u8,
+        content: ?[*:0]const u8 = null,
         tts: bool = false,
-        embeds: [*c]embeds = null,
+        embeds: ?*embeds = null,
         allowed_mentions: [*c]allowed_mention = null,
         message_reference: [*c]message_reference = null,
         components: [*c]components = null,
@@ -1194,6 +1200,10 @@ pub const Message = extern struct {
         user: *User,
         member: ?*guild_member = null,
     };
+
+    pub fn create(client: Client, channel_id: u64snowflake, params: Create) !void {
+        return client.createMessage(channel_id, &params, null).toError();
+    }
 };
 pub const messages = extern struct {
     size: c_int = 0,
@@ -1976,31 +1986,33 @@ pub const message_delete_bulk = extern struct {
     channel_id: u64snowflake = 0,
     guild_id: u64snowflake = 0,
 };
-pub const message_reaction_add = extern struct {
-    user_id: u64snowflake = 0,
-    channel_id: u64snowflake = 0,
-    message_id: u64snowflake = 0,
-    guild_id: u64snowflake = 0,
-    member: [*c]guild_member = null,
-    emoji: [*c]emoji = null,
-};
-pub const message_reaction_remove = extern struct {
-    user_id: u64snowflake = 0,
-    channel_id: u64snowflake = 0,
-    message_id: u64snowflake = 0,
-    guild_id: u64snowflake = 0,
-    emoji: [*c]emoji = null,
-};
-pub const message_reaction_remove_all = extern struct {
-    channel_id: u64snowflake = 0,
-    message_id: u64snowflake = 0,
-    guild_id: u64snowflake = 0,
-};
-pub const message_reaction_remove_emoji = extern struct {
-    channel_id: u64snowflake = 0,
-    guild_id: u64snowflake = 0,
-    message_id: u64snowflake = 0,
-    emoji: [*c]emoji = null,
+pub const message_reaction = struct {
+    pub const Add = extern struct {
+        user_id: u64snowflake = 0,
+        channel_id: u64snowflake = 0,
+        message_id: u64snowflake = 0,
+        guild_id: u64snowflake = 0,
+        member: ?*guild_member = null,
+        emoji: ?*emoji = null,
+    };
+    pub const Remove = extern struct {
+        user_id: u64snowflake = 0,
+        channel_id: u64snowflake = 0,
+        message_id: u64snowflake = 0,
+        guild_id: u64snowflake = 0,
+        emoji: [*c]emoji = null,
+    };
+    pub const RemoveAll = extern struct {
+        channel_id: u64snowflake = 0,
+        message_id: u64snowflake = 0,
+        guild_id: u64snowflake = 0,
+    };
+    pub const RemoveEmoji = extern struct {
+        channel_id: u64snowflake = 0,
+        guild_id: u64snowflake = 0,
+        message_id: u64snowflake = 0,
+        emoji: [*c]emoji = null,
+    };
 };
 pub const typing_start = extern struct {
     channel_id: u64snowflake = 0,
@@ -2120,6 +2132,12 @@ pub const ApplicationCommand = extern struct {
         USER = 2,
         MESSAGE = 3,
     };
+
+    pub const Return = struct {
+        sync: ?*ApplicationCommand = null,
+        done: ?*const fn (cmd: *ApplicationCommand, user_data: ?*anyopaque) void = null,
+        user_data: ?*anyopaque = null,
+    };
 };
 pub const application_commands = extern struct {
     size: c_int = 0,
@@ -2234,7 +2252,7 @@ pub const Interaction = extern struct {
         type: CallbackType = .CHANNEL_MESSAGE_WITH_SOURCE,
         data: *const interaction_callback_data,
 
-        pub const Return = extern struct {
+        pub const Return = extern struct { // TODO: fix?
             data: ?*anyopaque = null,
             cleanup: ?*const fn (client: Client, data: *void) callconv(.c) void = null,
             keep: ?*const anyopaque = null,
@@ -2307,11 +2325,7 @@ pub const CreateGlobalApplicationCommand = struct {
     default_permission: bool = true,
     type: ApplicationCommand.Type,
 
-    pub const Return = struct {
-        sync: ?*ApplicationCommand = null,
-        done: ?*const fn (cmd: *ApplicationCommand, user_data: ?*anyopaque) void = null,
-        user_data: ?*anyopaque = null,
-    };
+    pub const Return = ApplicationCommand.Return;
 };
 
 pub const CreateGuildApplicationCommand = struct {
@@ -2324,12 +2338,12 @@ pub const CreateGuildApplicationCommand = struct {
     type: ApplicationCommand.Type,
 
     pub const Return = extern struct {
-        data: ?*anyopaque = null,
-        cleanup: ?*const fn (client: Client, data: *void) callconv(.c) void = null,
+        user_data: ?*anyopaque = null,
+        cleanup: ?*const fn (client: Client, user_data: *anyopaque) callconv(.c) void = null,
         keep: ?*const anyopaque = null,
         high_priority: bool = false,
-        fail: ?*const fn (client: Client, resp: *CreateGuildApplicationCommand) callconv(.c) void = null,
-        done: ?*const fn (client: Client, resp: *CreateGuildApplicationCommand, ret: *const CreateGuildApplicationCommand) callconv(.c) void,
+        fail: ?*const fn (client: Client, ret: *Return) callconv(.c) void = null,
+        done: ?*const fn (client: Client, ret: *Return) callconv(.c) void = null,
         sync: ?*CreateGuildApplicationCommand = null,
     };
 };
@@ -2464,26 +2478,26 @@ pub const USER = enum(c_int) {
     CERTIFIED_MODERATOR = 1 << 18,
     BOT_HTTP_INTERACTIONS = 1 << 19,
 };
-pub const GATEWAY = enum(c_int) {
-    GUILDS = 1 << 0,
-    GUILD_MEMBERS = 1 << 1,
-    GUILD_BANS = 1 << 2,
-    GUILD_EMOJIS_AND_STICKERS = 1 << 3,
-    GUILD_INTEGRATIONS = 1 << 4,
-    GUILD_WEBHOOKS = 1 << 5,
-    GUILD_INVITES = 1 << 6,
-    GUILD_VOICE_STATES = 1 << 7,
-    GUILD_PRESENCES = 1 << 8,
-    GUILD_MESSAGES = 1 << 9,
-    GUILD_MESSAGE_REACTIONS = 1 << 10,
-    GUILD_MESSAGE_TYPING = 1 << 11,
-    DIRECT_MESSAGES = 1 << 12,
-    DIRECT_MESSAGE_REACTIONS = 1 << 13,
-    DIRECT_MESSAGE_TYPING = 1 << 14,
-    MESSAGE_CONTENT = 1 << 15,
-    GUILD_SCHEDULED_EVENTS = 1 << 16,
-    AUTO_MODERATION_CONFIGURATION = 1 << 20,
-    AUTO_MODERATION_EXECUTION = 1 << 21,
+pub const GATEWAY = struct {
+    pub const GUILDS: u64 = 1 << 0;
+    pub const GUILD_MEMBERS: u64 = 1 << 1;
+    pub const GUILD_BANS: u64 = 1 << 2;
+    pub const GUILD_EMOJIS_AND_STICKERS: u64 = 1 << 3;
+    pub const GUILD_INTEGRATIONS: u64 = 1 << 4;
+    pub const GUILD_WEBHOOKS: u64 = 1 << 5;
+    pub const GUILD_INVITES: u64 = 1 << 6;
+    pub const GUILD_VOICE_STATES: u64 = 1 << 7;
+    pub const GUILD_PRESENCES: u64 = 1 << 8;
+    pub const GUILD_MESSAGES: u64 = 1 << 9;
+    pub const GUILD_MESSAGE_REACTIONS: u64 = 1 << 10;
+    pub const GUILD_MESSAGE_TYPING: u64 = 1 << 11;
+    pub const DIRECT_MESSAGES: u64 = 1 << 12;
+    pub const DIRECT_MESSAGE_REACTIONS: u64 = 1 << 13;
+    pub const DIRECT_MESSAGE_TYPING: u64 = 1 << 14;
+    pub const MESSAGE_CONTENT: u64 = 1 << 15;
+    pub const GUILD_SCHEDULED_EVENTS: u64 = 1 << 16;
+    pub const AUTO_MODERATION_CONFIGURATION: u64 = 1 << 20;
+    pub const AUTO_MODERATION_EXECUTION: u64 = 1 << 21;
 };
 pub const ACTIVITY = enum(c_int) {
     INSTANCE = 1 << 0,
@@ -2583,9 +2597,9 @@ pub const ErrorCode = enum(i32) {
         DiscordConnection,
     };
 
-    pub fn log(self: @This()) @This() {
+    pub fn log(self: @This(), ctx: ?[]const u8) @This() {
         self.toError() catch return self;
-        @import("std").log.scoped(.concord).err("{t}", .{self});
+        @import("std").log.err("{t}{s}{s}", .{ self, if (ctx != null) " at " else "", ctx orelse "" });
         return self;
     }
 
@@ -2617,6 +2631,11 @@ extern fn discord_init(token: [*:0]const u8) ?Client;
 pub const init = discord_init;
 
 pub const Client = *opaque {
+    pub const Return = extern struct {
+        done_: ?*const fn (client: Client, resp: *DiscordResponse) void = null,
+        sync: bool = false,
+    };
+
     extern fn discord_cleanup(client: Client) void;
     pub const cleanup = discord_cleanup;
 
@@ -2642,13 +2661,16 @@ pub const Client = *opaque {
     extern fn discord_run(client: Client) ErrorCode;
     pub const run = discord_run;
 
+    extern fn discord_get_user(client: Client, user_id: u64snowflake, ret: ?*User.Return) ErrorCode;
+    pub const getUser = discord_get_user;
+
     extern fn discord_create_guild_application_command(client: Client, application_id: u64snowflake, guild_id: u64snowflake, params: *CreateGuildApplicationCommand, ret: ?*CreateGuildApplicationCommand.Return) ErrorCode;
     pub const createGuildApplicationCommand = discord_create_guild_application_command;
 
     extern fn discord_create_global_application_command(client: Client, application_id: u64snowflake, params: *const CreateGlobalApplicationCommand, ret: ?*CreateGlobalApplicationCommand.Return) ErrorCode;
     pub const createGlobalApplicationCommand = discord_create_global_application_command;
 
-    extern fn discord_create_message(client: Client, channel_id: u64snowflake, params: *Message.Create, ret: ?*Message.Return) ErrorCode;
+    extern fn discord_create_message(client: Client, channel_id: u64snowflake, params: *const Message.Create, ret: ?*Message.Return) ErrorCode;
     pub const createMessage = discord_create_message;
 
     extern fn discord_create_interaction_response(client: Client, interaction_id: u64snowflake, interaction_token: [*:0]const u8, params: *const Interaction.Response, ret: ?*Interaction.Response.Return) ErrorCode;
@@ -2678,10 +2700,10 @@ pub const Client = *opaque {
     extern fn discord_set_prefix(client: Client, prefix: [*c]const u8) void;
     pub const setPrefix = discord_set_prefix;
 
-    extern fn discord_set_on_command(client: Client, command: [*c]u8, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
+    extern fn discord_set_on_command(client: Client, command: [*:0]const u8, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
     pub const setOnCommand = discord_set_on_command;
 
-    extern fn discord_set_on_commands(client: Client, commands: [*c]const [*c]u8, amount: c_int, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
+    extern fn discord_set_on_commands(client: Client, commands: [*]const [*:0]const u8, amount: c_int, callback: ?*const fn (client: Client, event: *const Message) callconv(.c) void) void;
     pub const setOnCommands = discord_set_on_commands;
 
     extern fn discord_set_next_wakeup(client: Client, delay: i64) void;
@@ -2701,6 +2723,9 @@ pub const Client = *opaque {
 
     extern fn discord_set_on_application_command_permissions_update(client: Client, callback: ?*const fn (client: Client, event: *const application_command_permissions) callconv(.c) void) void;
     pub const setOnApplicationCommandPermissionsUpdate = discord_set_on_application_command_permissions_update;
+
+    extern fn discord_create_reaction(client: Client, channel_id: u64snowflake, message_id: u64snowflake, emoji_id: u64snowflake, emoji_name: ?[*:0]const u8, ret: ?*Return) ErrorCode;
+    pub const createReaction = discord_create_reaction;
 
     extern fn discord_set_on_auto_moderation_rule_create(client: Client, callback: ?*const fn (client: Client, event: *const auto_moderation_rule) callconv(.c) void) void;
     pub const setOnAutoModerationRuleCreate = discord_set_on_auto_moderation_rule_create;
@@ -2834,16 +2859,16 @@ pub const Client = *opaque {
     extern fn discord_set_on_message_delete_bulk(client: Client, callback: ?*const fn (client: Client, event: *const message_delete_bulk) callconv(.c) void) void;
     pub const setOnMessageDeleteBulk = discord_set_on_message_delete_bulk;
 
-    extern fn discord_set_on_message_reaction_add(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_add) callconv(.c) void) void;
+    extern fn discord_set_on_message_reaction_add(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction.Add) callconv(.c) void) void;
     pub const setOnMessageReactionAdd = discord_set_on_message_reaction_add;
 
-    extern fn discord_set_on_message_reaction_remove(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove) callconv(.c) void) void;
+    extern fn discord_set_on_message_reaction_remove(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction.Remove) callconv(.c) void) void;
     pub const setOnMessageReactionRemove = discord_set_on_message_reaction_remove;
 
-    extern fn discord_set_on_message_reaction_remove_all(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove_all) callconv(.c) void) void;
+    extern fn discord_set_on_message_reaction_remove_all(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction.RemoveAll) callconv(.c) void) void;
     pub const setOnMessageReactionRemoveAll = discord_set_on_message_reaction_remove_all;
 
-    extern fn discord_set_on_message_reaction_remove_emoji(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction_remove_emoji) callconv(.c) void) void;
+    extern fn discord_set_on_message_reaction_remove_emoji(client: Client, callback: ?*const fn (client: Client, event: *const message_reaction.RemoveEmoji) callconv(.c) void) void;
     pub const setOnMessageReactionRemoveEmoji = discord_set_on_message_reaction_remove_emoji;
 
     extern fn discord_set_on_presence_update(client: Client, callback: ?*const fn (client: Client, event: *const presence_update) callconv(.c) void) void;

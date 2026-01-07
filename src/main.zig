@@ -3,23 +3,41 @@ const builtin = @import("builtin");
 const discord = @import("discord");
 const Command = @import("commands/Command.zig");
 
-pub const Profile = packed struct {
+pub const Profile = struct {
+    cooldown: std.time.Instant = std.mem.zeroes(std.time.Instant),
     messages: u64 = 0,
+    reactions: u64 = 0,
+    xp: u64 = 0,
+
+    pub const balance = struct {
+        const xp_per_message: u64 = 2;
+        const xp_per_reaction: u64 = 1;
+        const cooldown_s = std.time.ns_per_ms * 3767;
+    };
 
     pub fn encode(self: @This()) [@sizeOf(@This())]u8 {
         var buffer: [@sizeOf(@This())]u8 = undefined;
 
         std.mem.writeInt(u64, buffer[0..8], self.messages, builtin.cpu.arch.endian());
+        std.mem.writeInt(u64, buffer[8..16], self.reactions, builtin.cpu.arch.endian());
+        std.mem.writeInt(u64, buffer[16..24], self.xp, builtin.cpu.arch.endian());
 
         return buffer;
     }
 
     pub fn decode(buf: []const u8) @This() {
-        var self: @This() = .{};
+        return .{
+            .messages = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian()),
+            .reactions = std.mem.readInt(u64, buf[8..16], builtin.cpu.arch.endian()),
+            .xp = std.mem.readInt(u64, buf[16..24], builtin.cpu.arch.endian()),
+        };
+    }
 
-        self.messages = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian());
-
-        return self;
+    pub fn handleXp(self: *@This()) bool {
+        const now = std.time.Instant.now() catch unreachable;
+        const state = now.since(self.cooldown) > balance.cooldown_s;
+        if (state) self.cooldown = now;
+        return state;
     }
 };
 
@@ -46,7 +64,6 @@ pub const App = struct {
         }
 
         try std.Io.Dir.cwd().writeFile(self.io, .{ .sub_path = data_dir ++ "profiles.bin", .data = writer.buffered() });
-        try writer.flush();
     }
 
     pub fn load(self: *@This()) !void {
@@ -68,16 +85,17 @@ pub const App = struct {
     }
 
     pub fn onReady(client: discord.Client, event: *const discord.Ready) callconv(.c) void {
+        std.log.info("registering commands", .{});
         for (Command.commands) |command| {
             var params: discord.CreateGuildApplicationCommand = .{
                 .type = .CHAT_INPUT,
                 .name = command.name.ptr,
                 .description = command.description.ptr,
             };
-            client.createGuildApplicationCommand(event.application.id, 1377723883612016783, &params, null).toError() catch |err| {
-                std.log.err("{t} while creating command", .{err});
-            };
+            client.createGuildApplicationCommand(event.application.id, event.guilds.array[0].id, &params, null).toError() catch |err| std.log.err("\t{s}: {t}", .{ command.name, err });
+            std.log.info("\t{s}", .{command.name});
         }
+
         std.log.info("started: {s}", .{event.user.name});
     }
 
@@ -94,43 +112,41 @@ pub const App = struct {
     }
 
     pub fn onMessage(client: discord.Client, event: *const discord.Message) callconv(.c) void {
-        if (event.author.bot) return;
-
+        if (event.author.is_bot) return;
         const app = client.getData(App).?;
 
         if (app.profiles.get(event.author.id) == null) app.profiles.put(app.allocator, event.author.id, .{}) catch |err| std.log.err("adding new stat: {t}", .{err});
 
-        if (app.profiles.get(event.author.id)) |stat| {
-            var new_stat = stat;
-            new_stat.messages += 1;
-            app.profiles.put(app.allocator, event.author.id, new_stat) catch return;
-            app.save() catch |err| std.log.err("save failed: {t}", .{err});
-        }
+        const profile = app.profiles.getPtr(event.author.id).?;
+        profile.messages += 1;
+        if (profile.handleXp()) profile.xp += Profile.balance.xp_per_message;
 
-        std.log.info("{s} {?}", .{ event.author.name, app.profiles.get(event.author.id) });
+        app.save() catch |err| std.log.err("save failed: {t}", .{err});
+
+        if (std.mem.eql(u8, std.mem.span(event.content), "ping")) discord.Message.create(client, event.channel_id, .{ .content = "pong!" }) catch return;
+        if (std.mem.eql(u8, std.mem.span(event.content), "ding")) discord.Message.create(client, event.channel_id, .{ .content = "dong!" }) catch return;
+    }
+
+    pub fn onReactionAdd(client: discord.Client, event: *const discord.message_reaction.Add) callconv(.c) void {
+        const app = client.getData(App).?;
+
+        if (app.profiles.get(event.user_id) == null) app.profiles.put(app.allocator, event.user_id, .{}) catch |err| std.log.err("adding new stat: {t}", .{err});
+        const profile = app.profiles.getPtr(event.user_id).?;
+        profile.reactions += 1;
+        if (profile.handleXp()) profile.xp +|= Profile.balance.xp_per_reaction;
+    }
+
+    pub fn onReactionRemove(client: discord.Client, event: *const discord.message_reaction.Remove) callconv(.c) void {
+        const app = client.getData(App).?;
+
+        if (app.profiles.get(event.user_id) == null) app.profiles.put(app.allocator, event.user_id, .{}) catch |err| std.log.err("adding new stat: {t}", .{err});
+        const profile = app.profiles.getPtr(event.user_id).?;
+        profile.reactions -|= 1;
+        if (profile.handleXp()) profile.xp -|= Profile.balance.xp_per_reaction;
     }
 };
 
-// var sig_count = std.atomic.Value(u8).init(0);
-
-// fn signal_handler(sig: std.posix.SIG, info: *const std.posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) void {
-//     _ = sig;
-//     _ = info;
-//     _ = ctx_ptr;
-//     const n = sig_count.fetchAdd(1, .acq_rel);
-//     if (n >= 1) std.process.exit(1);
-// }
-
 pub fn main() !void {
-    // if (builtin.os.tag != .windows) {
-    //     const act = std.posix.Sigaction{
-    //         .handler = .{ .sigaction = signal_handler },
-    //         .mask = std.posix.sigemptyset(),
-    //         .flags = std.os.linux.SA.RESTART,
-    //     };
-    //     std.posix.sigaction(.INT, &act, null);
-    // }
-
     var gpa: std.heap.DebugAllocator(.{ .safety = true }) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -150,10 +166,16 @@ pub fn main() !void {
     const client: discord.Client = discord.init(BOT_TOKEN) orelse return error.InitDiscordClient;
     defer client.cleanup();
 
+    client.addIntents(discord.GATEWAY.MESSAGE_CONTENT);
+
     client.setData(App, &app);
 
     client.setOnReady(App.onReady);
     client.setOnInteractionCreate(App.onInteraction);
     client.setOnMessageCreate(App.onMessage);
+    client.setOnMessageReactionAdd(App.onReactionAdd);
+    client.setOnMessageReactionRemove(App.onReactionRemove);
     try client.run().toError();
+
+    try app.save();
 }
