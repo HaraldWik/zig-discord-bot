@@ -2,7 +2,7 @@
     .name = .bot,
     .version = "0.0.0",
     .fingerprint = 0x11f041109cc85cd,
-    .minimum_zig_version = "0.16.0-dev.1484+d0ba6642b",
+    .minimum_zig_version = "0.16.0-dev.1912+0cbaaa5eb",
     .dependencies = .{
         .concord = .{
             .url = "git+https://github.com/Cogmasters/concord#fb0f834d07d65048a6afde177e318fe9659a9494",

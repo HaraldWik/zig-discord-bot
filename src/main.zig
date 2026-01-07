@@ -1,20 +1,71 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const discord = @import("discord");
 const Command = @import("commands/Command.zig");
 
-pub const Stat = struct {
+pub const Profile = packed struct {
     messages: u64 = 0,
+
+    pub fn encode(self: @This()) [@sizeOf(@This())]u8 {
+        var buffer: [@sizeOf(@This())]u8 = undefined;
+
+        std.mem.writeInt(u64, buffer[0..8], self.messages, builtin.cpu.arch.endian());
+
+        return buffer;
+    }
+
+    pub fn decode(buf: []const u8) @This() {
+        var self: @This() = .{};
+
+        self.messages = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian());
+
+        return self;
+    }
 };
 
-pub const App = struct {
-    config: Config,
-    allocator: std.mem.Allocator,
-    stats: std.AutoHashMapUnmanaged(discord.u64snowflake, Stat) = .empty,
+const data_dir = "data/";
 
-    pub const Config = struct {
-        data_dir: []const u8 = "data",
-        is_good: bool = false,
-    };
+pub const App = struct {
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    profiles: std.AutoHashMapUnmanaged(discord.u64snowflake, Profile) = .empty,
+
+    pub fn close(self: *@This()) void {
+        self.profiles.deinit(self.allocator);
+    }
+
+    pub fn save(self: *@This()) !void {
+        var allocating: std.Io.Writer.Allocating = .init(self.allocator);
+        defer allocating.deinit();
+        const writer: *std.Io.Writer = &allocating.writer;
+
+        var it = self.profiles.iterator();
+        while (it.next()) |entry| {
+            try writer.writeAll(&std.mem.toBytes(entry.key_ptr.*));
+            try writer.writeAll(&entry.value_ptr.encode());
+        }
+
+        try std.Io.Dir.cwd().writeFile(self.io, .{ .sub_path = data_dir ++ "profiles.bin", .data = writer.buffered() });
+        try writer.flush();
+    }
+
+    pub fn load(self: *@This()) !void {
+        var file = std.Io.Dir.cwd().openFile(self.io, data_dir ++ "profiles.bin", .{}) catch |err| if (err == error.FileNotFound) return else return err;
+        defer file.close(self.io);
+
+        var buffer: [@sizeOf(u64) + @sizeOf(Profile)]u8 = undefined;
+        var file_reader = file.reader(self.io, &buffer);
+        const reader = &file_reader.interface;
+        std.log.info("loading data", .{});
+
+        while (true) {
+            var slice = reader.take(buffer.len) catch |err| if (err == error.EndOfStream) break else return err;
+            const key = std.mem.readInt(u64, slice[0..8], builtin.cpu.arch.endian());
+            const value: Profile = .decode(slice[8..]);
+            try self.profiles.put(self.allocator, key, value);
+            std.log.info("\tprofile: {d} {any}", .{ key, value });
+        }
+    }
 
     pub fn onReady(client: discord.Client, event: *const discord.Ready) callconv(.c) void {
         for (Command.commands) |command| {
@@ -43,65 +94,56 @@ pub const App = struct {
     }
 
     pub fn onMessage(client: discord.Client, event: *const discord.Message) callconv(.c) void {
-        const app = client.getData(App).?;
         if (event.author.bot) return;
-        std.debug.print("{d} {s} Message: \n", .{ event.author.id, event.content });
 
-        if (app.stats.get(event.author.id)) |stat| {
+        const app = client.getData(App).?;
+
+        if (app.profiles.get(event.author.id) == null) app.profiles.put(app.allocator, event.author.id, .{}) catch |err| std.log.err("adding new stat: {t}", .{err});
+
+        if (app.profiles.get(event.author.id)) |stat| {
             var new_stat = stat;
             new_stat.messages += 1;
-            app.stats.put(app.allocator, event.author.id, new_stat) catch return;
+            app.profiles.put(app.allocator, event.author.id, new_stat) catch return;
+            app.save() catch |err| std.log.err("save failed: {t}", .{err});
         }
 
-        const content: [*:0]const u8 = "Hello";
-
-        var params: discord.Message.Create = .{
-            .content = content,
-        };
-
-        _ = client.createMessage(event.channel_id, &params, null).log();
-
-        if (!std.mem.eql(u8, std.mem.span(event.content), "ping")) return;
+        std.log.info("{s} {?}", .{ event.author.name, app.profiles.get(event.author.id) });
     }
 };
 
+// var sig_count = std.atomic.Value(u8).init(0);
+
+// fn signal_handler(sig: std.posix.SIG, info: *const std.posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) void {
+//     _ = sig;
+//     _ = info;
+//     _ = ctx_ptr;
+//     const n = sig_count.fetchAdd(1, .acq_rel);
+//     if (n >= 1) std.process.exit(1);
+// }
+
 pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    // if (builtin.os.tag != .windows) {
+    //     const act = std.posix.Sigaction{
+    //         .handler = .{ .sigaction = signal_handler },
+    //         .mask = std.posix.sigemptyset(),
+    //         .flags = std.os.linux.SA.RESTART,
+    //     };
+    //     std.posix.sigaction(.INT, &act, null);
+    // }
+
+    var gpa: std.heap.DebugAllocator(.{ .safety = true }) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-
-    var args = std.process.args();
-    _ = args.skip();
-
-    var config: App.Config = .{};
-    while (args.next()) |arg| {
-        if (!std.mem.eql(u8, arg[0..2], "--")) continue;
-
-        const equal_index = std.mem.indexOfScalar(u8, arg, '=') orelse break;
-        inline for (@typeInfo(App.Config).@"struct".fields) |current_field| {
-            const field = arg[2..equal_index];
-            const value = arg[equal_index + 1 ..];
-
-            if (std.mem.eql(u8, field, current_field.name)) {
-                if (switch (@typeInfo(current_field.type)) {
-                    .bool => if (std.mem.eql(u8, value, "true")) true else if (std.mem.eql(u8, value, "false")) false else null,
-                    // .pointer => |ptr| if (ptr.child == u8) str: {
-                    //     std.debug.print("HELO\n", .{});
-                    //     if (value.len < 2 or value[0] != '"') return error.NoStartingQuote;
-                    //     const end = std.mem.indexOfScalar(u8, value[1..], '"') orelse return error.NoEndingQuote;
-                    //     break :str value[1..end];
-                    // } else null,
-                    else => null,
-                }) |val| @field(config, current_field.name) = val;
-            }
-        }
-    }
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    defer threaded.deinit();
+    const io = threaded.io();
 
     var app: App = .{
-        .config = config,
         .allocator = allocator,
+        .io = io,
     };
-    defer app.stats.deinit(allocator);
+    defer app.close();
+    try app.load();
 
     const BOT_TOKEN: [*:0]const u8 = @embedFile("TOKEN");
 
@@ -113,6 +155,5 @@ pub fn main() !void {
     client.setOnReady(App.onReady);
     client.setOnInteractionCreate(App.onInteraction);
     client.setOnMessageCreate(App.onMessage);
-
     try client.run().toError();
 }

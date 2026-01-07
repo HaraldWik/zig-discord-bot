@@ -2584,7 +2584,8 @@ pub const ErrorCode = enum(i32) {
     };
 
     pub fn log(self: @This()) @This() {
-        if (self != .OK) @import("std").log.scoped(.concord).err("{t}", .{self});
+        self.toError() catch return self;
+        @import("std").log.scoped(.concord).err("{t}", .{self});
         return self;
     }
 
