@@ -43,7 +43,8 @@ pub const Profile = struct {
         return buffer;
     }
 
-    pub fn decode(buf: [save_size]u8) @This() {
+    pub fn decode(buf: []const u8) @This() {
+        if (buf.len != save_size) @panic("invalid buffer size");
         var self: @This() = .{
             .id = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian()),
             .messages = std.mem.readInt(u64, buf[8..16], builtin.cpu.arch.endian()),
@@ -63,10 +64,7 @@ pub const Profile = struct {
     }
 
     pub fn getName(self: @This()) [:0]const u8 {
-        const len = for (self.name, 0..) |char, i| {
-            if (char == 0) break i;
-        } else 0;
-        return self.name[0..len :0];
+        return std.mem.span(@as([*:0]const u8, @ptrCast(self.name[0..].ptr)));
     }
 };
 
@@ -96,7 +94,7 @@ pub const App = struct {
         var file = std.Io.Dir.cwd().openFile(self.io, data_dir ++ "profiles.bin", .{}) catch |err| if (err == error.FileNotFound) return else return err;
         defer file.close(self.io);
 
-        var buffer: [Profile.save_size + 1]u8 = undefined;
+        var buffer: [Profile.save_size]u8 = undefined;
         var file_reader = file.reader(self.io, &buffer);
         const reader = &file_reader.interface;
 
@@ -105,7 +103,7 @@ pub const App = struct {
             var slice = reader.take(buffer.len) catch |err| if (err == error.EndOfStream) break else return err;
             const profile: Profile = .decode(slice[0..Profile.save_size]);
             try self.profiles.put(self.allocator, profile.id, profile);
-            std.log.info("\tprofile: {s}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.getName(), profile.messages, profile.reactions, profile.xp });
+            std.log.info("\tprofile: {s}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.name, profile.messages, profile.reactions, profile.xp });
         }
     }
 

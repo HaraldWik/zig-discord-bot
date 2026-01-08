@@ -9,6 +9,7 @@ pub const commands: []const @This() = &.{
     @import("globglogabgelab.zig").command,
     @import("profile.zig").command,
     @import("leaderboard.zig").command,
+    @import("meow.zig").command,
 };
 
 pub const Execute = *const fn (client: discord.Client, interaction: Interaction) anyerror!void;
