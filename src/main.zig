@@ -211,7 +211,7 @@ pub fn main() !void {
 
     const intents =
         discord.GATEWAY.GUILDS |
-        // discord.GATEWAY.GUILD_MEMBERS |
+        discord.GATEWAY.GUILD_MEMBERS |
         discord.GATEWAY.GUILD_MESSAGES |
         discord.GATEWAY.GUILD_MESSAGE_REACTIONS |
         discord.GATEWAY.MESSAGE_CONTENT;

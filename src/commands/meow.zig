@@ -58,4 +58,5 @@ const cats: []const []const u8 = &.{
     "https://tenor.com/view/cat-gif-16258174987336597266",
     "https://tenor.com/view/silly-reaction-meme-stan-twitter-funny-stressed-gif-7713976294327515532",
     "https://tenor.com/view/happy-catto-gif-15346413526676920650",
+    "https://media.tenor.com/h8TMXz1liyUAAAAd/image.gif",
 };
