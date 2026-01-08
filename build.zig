@@ -20,6 +20,14 @@ pub fn build(b: *std.Build) void {
     discord.linkSystemLibrary("discord", .{ .needed = true });
     discord.linkSystemLibrary("curl", .{ .needed = true });
 
+    const discord_header = b.addTranslateC(.{
+        .root_source_file = concord.path("include/discord.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    discord_header.addIncludePath(concord.path("."));
+    discord_header.addIncludePath(concord.path("core"));
+
     const exe = b.addExecutable(.{
         .name = "bot",
         .root_module = b.createModule(.{
@@ -28,6 +36,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "discord", .module = discord },
+                .{ .name = "concord", .module = discord_header.createModule() },
             },
         }),
     });

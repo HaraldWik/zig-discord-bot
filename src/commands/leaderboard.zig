@@ -1,0 +1,53 @@
+const std = @import("std");
+const Command = @import("Command.zig");
+// const discord = @import("../discord.zig");
+const discord = @import("discord");
+const App = @import("../main.zig").App;
+const Profile = @import("../main.zig").Profile;
+
+pub const command: Command = .{
+    .name = "leaderboard",
+    .description = "See who is the best in all aspects",
+    .onExecute = onExecute,
+};
+
+const leaderboard_count = 5;
+
+pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
+    const app: *App = client.getData(App).?;
+
+    var leaderboard: std.ArrayList(@TypeOf(app.profiles).Entry) = try .initCapacity(app.allocator, @intCast(app.profiles.count()));
+    defer leaderboard.deinit(app.allocator);
+
+    var it = app.profiles.iterator();
+    while (it.next()) |entry| {
+        leaderboard.appendAssumeCapacity(entry);
+    }
+
+    std.sort.block(@TypeOf(app.profiles).Entry, leaderboard.items, {}, struct {
+        pub fn greaterThan(context: void, a: @TypeOf(app.profiles).Entry, b: @TypeOf(app.profiles).Entry) bool {
+            _ = context;
+            return a.value_ptr.xp > b.value_ptr.xp;
+        }
+    }.greaterThan);
+
+    var buf: [256]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&buf);
+    try writer.writeAll("Leaderboard\n");
+    for (leaderboard.items, 0..) |entry, i| {
+        if (i > leaderboard.items.len) break;
+
+        var user: discord.User = undefined;
+        const ptr_user: ?*discord.User = &user;
+        var ret: discord.User.Return = .{ .sync = ptr_user };
+        try client.getUser(entry.key_ptr.*, &ret).toError();
+        while (ret.sync == null or ptr_user == null) {
+            std.debug.print("Null\n", .{});
+        }
+        std.debug.print("user success: {d} vs {d}\n", .{ entry.key_ptr.*, user.id });
+        try writer.print("{d} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.xp });
+    }
+    try writer.writeByte(0);
+
+    try interaction.respond(client, @ptrCast(writer.buffered()));
+}

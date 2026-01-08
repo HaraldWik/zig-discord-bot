@@ -8,6 +8,7 @@ onExecute: ?Execute = null,
 pub const commands: []const @This() = &.{
     @import("globglogabgelab.zig").command,
     @import("profile.zig").command,
+    @import("leaderboard.zig").command,
 };
 
 pub const Execute = *const fn (client: discord.Client, interaction: Interaction) anyerror!void;
@@ -58,9 +59,15 @@ pub const Interaction = struct {
     }
 };
 
-pub fn call(client: discord.Client, name: [*:0]const u8, interaction: Interaction) void {
+pub fn call(client: discord.Client, command_name: [*:0]const u8, interaction: Interaction) void {
     for (commands) |command| {
-        if (!std.mem.eql(u8, std.mem.span(name), command.name)) continue;
-        if (command.onExecute) |onExecute| onExecute(client, interaction) catch unreachable; // TODO add erroring
+        if (!std.mem.eql(u8, std.mem.span(command_name), command.name)) continue;
+        std.log.info("command '{s}'' called by {s}", .{ command_name, interaction.user.name });
+        if (command.onExecute) |onExecute| onExecute(client, interaction) catch |err| {
+            std.log.err("{t} when calling command {s}", .{ err, command_name });
+            var buf: [128]u8 = undefined;
+            const content = std.fmt.bufPrintZ(&buf, "Error {t} when calling command {s} ", .{ err, command_name }) catch unreachable;
+            interaction.respond(client, content) catch {};
+        };
     }
 }

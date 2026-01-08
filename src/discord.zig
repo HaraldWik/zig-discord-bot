@@ -581,8 +581,8 @@ pub const roles = extern struct {
 };
 pub const emoji = extern struct {
     id: u64snowflake = 0,
-    name: [*c]u8 = null,
-    roles: [*c]snowflakes = null,
+    name: [*:0]const u8,
+    roles: ?*snowflakes = null,
     user: *User,
     require_colons: bool = false,
     managed: bool = false,
@@ -1993,14 +1993,14 @@ pub const message_reaction = struct {
         message_id: u64snowflake = 0,
         guild_id: u64snowflake = 0,
         member: ?*guild_member = null,
-        emoji: ?*emoji = null,
+        emoji: *emoji,
     };
     pub const Remove = extern struct {
         user_id: u64snowflake = 0,
         channel_id: u64snowflake = 0,
         message_id: u64snowflake = 0,
         guild_id: u64snowflake = 0,
-        emoji: [*c]emoji = null,
+        emoji: *emoji,
     };
     pub const RemoveAll = extern struct {
         channel_id: u64snowflake = 0,
@@ -2011,7 +2011,7 @@ pub const message_reaction = struct {
         channel_id: u64snowflake = 0,
         guild_id: u64snowflake = 0,
         message_id: u64snowflake = 0,
-        emoji: [*c]emoji = null,
+        emoji: *emoji,
     };
 };
 pub const typing_start = extern struct {

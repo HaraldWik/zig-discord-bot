@@ -2,6 +2,16 @@ const std = @import("std");
 const builtin = @import("builtin");
 const discord = @import("discord");
 const Command = @import("commands/Command.zig");
+const concord = @import("concord");
+
+pub const std_options: std.Options = .{
+    .logFn = logFn,
+};
+
+pub fn logFn(comptime level: std.log.Level, comptime scope: @EnumLiteral(), comptime format: []const u8, args: anytype) void {
+    // TODO: add timestamp
+    std.log.defaultLog(level, scope, format, args);
+}
 
 const data_dir = "data/";
 const guild_id = 1377723883612016783;
@@ -94,19 +104,17 @@ pub const App = struct {
         std.log.info("registering commands", .{});
 
         for (Command.commands) |command| {
-            _ = command;
-            _ = client;
             // createGlobalApplicationCommand
-            // client.createGuildApplicationCommand(event.application.id, 1377723883612016783, &.{
-            //     .type = .CHAT_INPUT,
-            //     .name = command.name.ptr,
-            //     .description = command.description.ptr,
-            // }, null).toError() catch |err| {
-            //     std.log.err("\t{s}: {t}", .{ command.name, err });
-            //     continue;
-            // };
+            client.createGuildApplicationCommand(event.application.id, 1377723883612016783, &.{
+                .type = .CHAT_INPUT,
+                .name = command.name.ptr,
+                .description = command.description.ptr,
+            }, null).toError() catch |err| {
+                std.log.err("\t{s}: {t}", .{ command.name, err });
+                continue;
+            };
 
-            // std.log.info("\t{s}", .{command.name});
+            std.log.info("\t{s}", .{command.name});
         }
 
         std.log.info("started: {s}", .{event.user.name});
@@ -140,7 +148,10 @@ pub const App = struct {
 
         const profile = app.getProfile(event.user_id);
         profile.reactions += 1;
-        if (profile.handleXp()) profile.xp +|= Profile.balance.xp_per_reaction;
+        if (profile.handleXp()) {
+            const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
+            profile.xp +|= amount;
+        }
 
         app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
     }
@@ -150,7 +161,10 @@ pub const App = struct {
 
         const profile = app.getProfile(event.user_id);
         profile.reactions -|= 1;
-        if (profile.handleXp()) profile.xp -|= Profile.balance.xp_per_reaction;
+        if (profile.handleXp()) {
+            const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
+            profile.xp -|= amount;
+        }
 
         app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
 
