@@ -12,8 +12,8 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
     var prng: std.Random.DefaultPrng = .init(interaction.id);
     const random = prng.random();
 
-    const video_index = random.int(usize) % Video.vidoes.len;
-    const video = Video.vidoes[video_index];
+    const video_index = random.int(usize) % Video.videos.len;
+    const video = Video.videos[video_index];
 
     var buf: [128]u8 = undefined;
     const content = try std.fmt.bufPrintSentinel(&buf, "{s} {s} [⠀](https://www.youtube.com/watch?v={s})", .{ video.name, video.description orelse "", video.url }, 0);
@@ -26,7 +26,7 @@ pub const Video = struct {
     name: []const u8,
     description: ?[]const u8 = null,
 
-    const vidoes: []const @This() = &.{
+    const videos: []const @This() = &.{
         .{ .url = "hLljd8pfiFg", .name = "Official" },
         .{ .url = "cIwRQwAS_YY", .name = "Lil" },
         .{ .url = "7C5zM8CnZF0", .name = "XXX" },

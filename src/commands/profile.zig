@@ -5,7 +5,7 @@ const App = @import("../main.zig").App;
 
 pub const command: Command = .{
     .name = "profile",
-    .description = "Check you`re profile`s stats!",
+    .description = "Check your profile's stats!",
     .onExecute = onExecute,
 };
 

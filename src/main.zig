@@ -34,10 +34,10 @@ pub const Profile = struct {
     pub fn encode(self: @This()) [save_size]u8 {
         var buffer: [save_size]u8 = undefined;
 
-        std.mem.writeInt(u64, buffer[0..8], self.id, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[8..16], self.messages, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[16..24], self.reactions, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[24..32], self.xp, builtin.cpu.arch.endian());
+        std.mem.writeInt(u64, buffer[0..8], self.id, std.builtin.Endian.little);
+        std.mem.writeInt(u64, buffer[8..16], self.messages, std.builtin.Endian.little);
+        std.mem.writeInt(u64, buffer[16..24], self.reactions, std.builtin.Endian.little);
+        std.mem.writeInt(u64, buffer[24..32], self.xp, std.builtin.Endian.little);
         @memcpy(buffer[32..65], self.name[0..]);
 
         return buffer;
@@ -104,7 +104,7 @@ pub const App = struct {
         std.log.info("loading data", .{});
         while (true) {
             var slice = reader.take(buffer.len) catch |err| if (err == error.EndOfStream) break else return err;
-            const key = std.mem.readInt(u64, slice[0..8], builtin.cpu.arch.endian());
+            const key = std.mem.readInt(u64, slice[0..8], std.builtin.Endian.little);
             const profile: Profile = .decode(slice[8..]);
             try self.profiles.put(self.allocator, key, profile);
             // std.log.info("\tprofile: {s}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.getName(), profile.messages, profile.reactions, profile.xp });
@@ -133,7 +133,6 @@ pub const App = struct {
 
     pub fn onInteraction(client: discord.Client, interaction: *const discord.Interaction) callconv(.c) void {
         if (interaction.type != .APPLICATION_COMMAND) return;
-        std.debug.print("interaction: {any}\n", .{interaction.*});
 
         Command.call(client, interaction.data.?.name, Command.Interaction.Internal.toInteraction(.{ .command = interaction }));
     }
@@ -172,10 +171,7 @@ pub const App = struct {
         profile.reactions += 1;
         if (profile.handleXp()) {
             const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
-            profile.xp +|= amount;
-        }
-
-        app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
+        profile.xp +|= amount;
     }
 
     pub fn onReactionRemove(client: discord.Client, event: *const discord.message_reaction.Remove) callconv(.c) void {
@@ -185,11 +181,7 @@ pub const App = struct {
         profile.reactions -|= 1;
         if (profile.handleXp()) {
             const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
-            profile.xp -|= amount;
-        }
-
-        app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
-
+        profile.xp -|= amount;
     }
 };
 
