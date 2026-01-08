@@ -12,7 +12,7 @@ pub const command: Command = .{
 pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
     const app: *App = client.getData(App).?;
 
-    const profile = app.getProfile(interaction.user.id);
+    const profile = app.profiles.getPtr(interaction.user.id) orelse return interaction.respond(client, "You need to write a message to get a profile");
 
     const display_name = if (interaction.member != null and interaction.member.?.nick != null)
         interaction.member.?.nick.?

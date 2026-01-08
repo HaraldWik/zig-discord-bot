@@ -8,7 +8,11 @@ pub const DiscordResponse = struct {
     size: usize, // size of text
     // http: ua_resp,            // replace with your Zig equivalent of `struct ua_resp`
 };
-
+pub const struct_discord_response = extern struct {
+    data: ?*anyopaque = null,
+    keep: ?*const anyopaque = null,
+    code: ErrorCode = @import("std").mem.zeroes(ErrorCode),
+};
 pub const ccord_szbuf = extern struct {
     start: [*]u8,
     size: usize = 0,
@@ -53,10 +57,10 @@ pub const premium_types = enum(c_uint) {
     NITRO = 2,
 };
 pub const User = extern struct {
-    id: u64snowflake,
-    name: [*:0]const u8,
-    discriminator: [*:0]const u8,
-    avatar: [*:0]const u8,
+    id: u64snowflake = 0,
+    name: [*:0]const u8 = "",
+    discriminator: [*:0]const u8 = "",
+    avatar: [*:0]const u8 = "",
     is_bot: bool = false,
     system: bool = false,
     mfa_enabled: bool = false,
@@ -66,13 +70,17 @@ pub const User = extern struct {
     verified: bool = false,
     email: [*c]u8 = null,
     flags: u64bitmask = 0,
-    premium_type: premium_types,
+    premium_type: premium_types = .NONE,
     public_flags: u64bitmask = 0,
 
     pub const Return = struct {
+        data: ?*anyopaque = null,
+        cleanup: ?*const fn (client: Client, data: ?*anyopaque) callconv(.c) void = null,
+        keep: ?*const anyopaque = null,
+        high_priority: bool = false,
+        fail: ?*const fn (client: Client, resp: [*c]struct_discord_response) callconv(.c) void = null,
+        done: ?*const fn (client: Client, resp: [*c]struct_discord_response, ret: ?*const User) callconv(.c) void = null,
         sync: ?*User = null,
-        done: ?*const fn (user: *User, user_data: ?*anyopaque) callconv(.c) void = null,
-        user_data: ?*anyopaque = null,
     };
 };
 pub const membership_state = enum(c_uint) {

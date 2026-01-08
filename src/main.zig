@@ -17,10 +17,14 @@ const data_dir = "data/";
 const guild_id = 1377723883612016783;
 
 pub const Profile = struct {
-    cooldown: std.time.Instant = std.mem.zeroes(std.time.Instant),
+    id: u64 = 0,
     messages: u64 = 0,
     reactions: u64 = 0,
     xp: u64 = 0,
+    name: [33]u8 = @splat(0),
+    cooldown: std.time.Instant = std.mem.zeroes(std.time.Instant),
+
+    pub const save_size = @sizeOf(@This()) - @sizeOf(std.time.Instant);
 
     pub const balance = struct {
         const xp_per_message: u64 = 2;
@@ -28,22 +32,28 @@ pub const Profile = struct {
         const cooldown_s = std.time.ns_per_ms * 3767;
     };
 
-    pub fn encode(self: @This()) [@sizeOf(@This())]u8 {
-        var buffer: [@sizeOf(@This())]u8 = undefined;
+    pub fn encode(self: @This()) [save_size]u8 {
+        var buffer: [save_size]u8 = undefined;
 
-        std.mem.writeInt(u64, buffer[0..8], self.messages, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[8..16], self.reactions, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[16..24], self.xp, builtin.cpu.arch.endian());
+        std.mem.writeInt(u64, buffer[0..8], self.id, builtin.cpu.arch.endian());
+        std.mem.writeInt(u64, buffer[8..16], self.messages, builtin.cpu.arch.endian());
+        std.mem.writeInt(u64, buffer[16..24], self.reactions, builtin.cpu.arch.endian());
+        std.mem.writeInt(u64, buffer[24..32], self.xp, builtin.cpu.arch.endian());
+        @memcpy(buffer[32..65], self.name[0..]);
 
         return buffer;
     }
 
     pub fn decode(buf: []const u8) @This() {
-        return .{
-            .messages = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian()),
-            .reactions = std.mem.readInt(u64, buf[8..16], builtin.cpu.arch.endian()),
-            .xp = std.mem.readInt(u64, buf[16..24], builtin.cpu.arch.endian()),
+        var self: @This() = .{
+            .id = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian()),
+            .messages = std.mem.readInt(u64, buf[8..16], builtin.cpu.arch.endian()),
+            .reactions = std.mem.readInt(u64, buf[16..24], builtin.cpu.arch.endian()),
+            .xp = std.mem.readInt(u64, buf[24..32], builtin.cpu.arch.endian()),
         };
+        const name = buf[32..65];
+        @memcpy(self.name[0..name.len], name);
+        return self;
     }
 
     pub fn handleXp(self: *@This()) bool {
@@ -51,6 +61,13 @@ pub const Profile = struct {
         const state = now.since(self.cooldown) > balance.cooldown_s;
         if (state) self.cooldown = now;
         return state;
+    }
+
+    pub fn getName(self: @This()) [:0]const u8 {
+        const len = for (self.name, 0..) |char, i| {
+            if (char == 0) break i;
+        } else 0;
+        return self.name[0..len :0];
     }
 };
 
@@ -84,20 +101,15 @@ pub const App = struct {
         var buffer: [@sizeOf(u64) + @sizeOf(Profile)]u8 = undefined;
         var file_reader = file.reader(self.io, &buffer);
         const reader = &file_reader.interface;
-        std.log.info("loading data", .{});
 
+        std.log.info("loading data", .{});
         while (true) {
             var slice = reader.take(buffer.len) catch |err| if (err == error.EndOfStream) break else return err;
             const key = std.mem.readInt(u64, slice[0..8], builtin.cpu.arch.endian());
-            const value: Profile = .decode(slice[8..]);
-            try self.profiles.put(self.allocator, key, value);
-            std.log.info("\tprofile: {d} {any}", .{ key, value });
+            const profile: Profile = .decode(slice[8..]);
+            try self.profiles.put(self.allocator, key, profile);
+            // std.log.info("\tprofile: {s}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.getName(), profile.messages, profile.reactions, profile.xp });
         }
-    }
-
-    pub fn getProfile(self: *@This(), id: discord.u64snowflake) *Profile {
-        if (self.profiles.get(id) == null) self.profiles.put(self.allocator, id, .{}) catch |err| std.log.err("{t} while adding new profile", .{err});
-        return self.profiles.getPtr(id).?;
     }
 
     pub fn onReady(client: discord.Client, event: *const discord.Ready) callconv(.c) void {
@@ -129,9 +141,22 @@ pub const App = struct {
 
     pub fn onMessage(client: discord.Client, event: *const discord.Message) callconv(.c) void {
         if (event.author.is_bot) return;
+
+        if (event.content[0] == '!') return Command.call(client, event.content[1..], Command.Interaction.Internal.toInteraction(.{ .message = event }));
+
         const app = client.getData(App).?;
 
-        const profile = app.getProfile(event.author.id);
+        if (app.profiles.get(event.author.id) == null) {
+            var new_profile: Profile = .{ .id = event.author.id };
+            const name = std.mem.span(if (event.member != null and event.member.?.nick != null)
+                event.member.?.nick.?
+            else
+                event.author.name); // fallback to global username
+            @memcpy(new_profile.name[0..name.len], name);
+            app.profiles.put(app.allocator, new_profile.id, new_profile) catch |err| std.log.err("{t} while adding new profile", .{err});
+        }
+
+        const profile = app.profiles.getPtr(event.author.id).?;
         profile.messages += 1;
         if (profile.handleXp()) profile.xp += Profile.balance.xp_per_message;
 
@@ -139,14 +164,12 @@ pub const App = struct {
 
         if (std.mem.eql(u8, std.mem.span(event.content), "ping")) discord.Message.create(client, event.channel_id, .{ .content = "pong!" }) catch return;
         if (std.mem.eql(u8, std.mem.span(event.content), "ding")) discord.Message.create(client, event.channel_id, .{ .content = "dong!" }) catch return;
-
-        if (event.content[0] == '!') Command.call(client, event.content[1..], Command.Interaction.Internal.toInteraction(.{ .message = event }));
     }
 
     pub fn onReactionAdd(client: discord.Client, event: *const discord.message_reaction.Add) callconv(.c) void {
         const app = client.getData(App).?;
 
-        const profile = app.getProfile(event.user_id);
+        const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions += 1;
         if (profile.handleXp()) {
             const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
@@ -159,7 +182,7 @@ pub const App = struct {
     pub fn onReactionRemove(client: discord.Client, event: *const discord.message_reaction.Remove) callconv(.c) void {
         const app = client.getData(App).?;
 
-        const profile = app.getProfile(event.user_id);
+        const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions -|= 1;
         if (profile.handleXp()) {
             const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;

@@ -36,17 +36,9 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
     try writer.writeAll("Leaderboard\n");
     for (leaderboard.items, 0..) |entry, i| {
         if (i > leaderboard.items.len) break;
-
-        var user: discord.User = undefined;
-        const ptr_user: ?*discord.User = &user;
-        var ret: discord.User.Return = .{ .sync = ptr_user };
-        try client.getUser(entry.key_ptr.*, &ret).toError();
-        while (ret.sync == null or ptr_user == null) {
-            std.debug.print("Null\n", .{});
-        }
-        std.debug.print("user success: {d} vs {d}\n", .{ entry.key_ptr.*, user.id });
-        try writer.print("{d} {d}\n", .{ entry.key_ptr.*, entry.value_ptr.xp });
+        try writer.print("#{d} {s}: {d}xp\n", .{ i + 1, entry.value_ptr.getName(), entry.value_ptr.xp });
     }
+
     try writer.writeByte(0);
 
     try interaction.respond(client, @ptrCast(writer.buffered()));
