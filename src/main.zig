@@ -129,7 +129,6 @@ pub const App = struct {
 
     pub fn onInteraction(client: discord.Client, interaction: *const discord.Interaction) callconv(.c) void {
         if (interaction.type != .APPLICATION_COMMAND) return;
-        std.debug.print("interaction: {any}\n", .{interaction.*});
 
         Command.call(client, interaction.data.?.name, Command.Interaction.Internal.toInteraction(.{ .command = interaction }));
     }
@@ -204,7 +203,7 @@ pub fn main() !void {
     defer app.close();
     try app.load();
 
-    const BOT_TOKEN: [*:0]const u8 = @embedFile("TOKEN");
+    const BOT_TOKEN: [*:0]const u8 = @embedFile("TOKEN2");
 
     const client: discord.Client = discord.init(BOT_TOKEN) orelse return error.InitDiscordClient;
     defer client.cleanup();
