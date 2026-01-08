@@ -55,8 +55,8 @@ pub const premium_types = enum(c_uint) {
 pub const User = extern struct {
     id: u64snowflake,
     name: [*:0]const u8,
-    discriminator: [*c]u8 = null,
-    avatar: [*c]u8 = null,
+    discriminator: [*:0]const u8,
+    avatar: [*:0]const u8,
     is_bot: bool = false,
     system: bool = false,
     mfa_enabled: bool = false,
@@ -335,9 +335,9 @@ pub const thread_metadata = extern struct {
 };
 pub const guild_member = extern struct {
     user: *User,
-    nick: [*c]u8 = null,
-    avatar: [*c]u8 = null,
-    roles: [*c]snowflakes = null,
+    nick: ?[*:0]const u8 = null,
+    avatar: [*:0]const u8,
+    roles: *snowflakes,
     joined_at: u64unix_ms = 0,
     premium_since: u64unix_ms = 0,
     deaf: bool = false,
@@ -1109,7 +1109,7 @@ pub const Message = extern struct {
     channel_id: u64snowflake = 0,
     guild_id: u64snowflake = 0,
     author: *User,
-    member: *guild_member,
+    member: ?*guild_member = null,
     content: [*:0]const u8,
     timestamp: u64unix_ms = 0,
     edited_timestamp: u64unix_ms = 0,
@@ -2111,7 +2111,7 @@ pub const application_command_option = extern struct {
 };
 pub const application_command_options = extern struct {
     size: c_int = 0,
-    array: [*]application_command_option,
+    array: [*]application_command_option = undefined,
     realsize: c_int = 0,
 };
 pub const ApplicationCommand = extern struct {
@@ -2319,7 +2319,7 @@ pub const edit_followup_message = extern struct {
 pub const CreateGlobalApplicationCommand = struct {
     name: [*:0]const u8,
     description: [*:0]const u8,
-    options: application_command_options = .{},
+    options: ?*application_command_options = null,
     default_member_permissions: u64bitmask = 0,
     dm_permission: bool = false,
     default_permission: bool = true,
@@ -2664,7 +2664,7 @@ pub const Client = *opaque {
     extern fn discord_get_user(client: Client, user_id: u64snowflake, ret: ?*User.Return) ErrorCode;
     pub const getUser = discord_get_user;
 
-    extern fn discord_create_guild_application_command(client: Client, application_id: u64snowflake, guild_id: u64snowflake, params: *CreateGuildApplicationCommand, ret: ?*CreateGuildApplicationCommand.Return) ErrorCode;
+    extern fn discord_create_guild_application_command(client: Client, application_id: u64snowflake, guild_id: u64snowflake, params: *const CreateGuildApplicationCommand, ret: ?*ApplicationCommand.Return) ErrorCode;
     pub const createGuildApplicationCommand = discord_create_guild_application_command;
 
     extern fn discord_create_global_application_command(client: Client, application_id: u64snowflake, params: *const CreateGlobalApplicationCommand, ret: ?*CreateGlobalApplicationCommand.Return) ErrorCode;

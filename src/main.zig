@@ -3,6 +3,9 @@ const builtin = @import("builtin");
 const discord = @import("discord");
 const Command = @import("commands/Command.zig");
 
+const data_dir = "data/";
+const guild_id = 1377723883612016783;
+
 pub const Profile = struct {
     cooldown: std.time.Instant = std.mem.zeroes(std.time.Instant),
     messages: u64 = 0,
@@ -40,8 +43,6 @@ pub const Profile = struct {
         return state;
     }
 };
-
-const data_dir = "data/";
 
 pub const App = struct {
     allocator: std.mem.Allocator,
@@ -84,16 +85,28 @@ pub const App = struct {
         }
     }
 
+    pub fn getProfile(self: *@This(), id: discord.u64snowflake) *Profile {
+        if (self.profiles.get(id) == null) self.profiles.put(self.allocator, id, .{}) catch |err| std.log.err("{t} while adding new profile", .{err});
+        return self.profiles.getPtr(id).?;
+    }
+
     pub fn onReady(client: discord.Client, event: *const discord.Ready) callconv(.c) void {
         std.log.info("registering commands", .{});
+
         for (Command.commands) |command| {
-            var params: discord.CreateGuildApplicationCommand = .{
-                .type = .CHAT_INPUT,
-                .name = command.name.ptr,
-                .description = command.description.ptr,
-            };
-            client.createGuildApplicationCommand(event.application.id, event.guilds.array[0].id, &params, null).toError() catch |err| std.log.err("\t{s}: {t}", .{ command.name, err });
-            std.log.info("\t{s}", .{command.name});
+            _ = command;
+            _ = client;
+            // createGlobalApplicationCommand
+            // client.createGuildApplicationCommand(event.application.id, 1377723883612016783, &.{
+            //     .type = .CHAT_INPUT,
+            //     .name = command.name.ptr,
+            //     .description = command.description.ptr,
+            // }, null).toError() catch |err| {
+            //     std.log.err("\t{s}: {t}", .{ command.name, err });
+            //     continue;
+            // };
+
+            // std.log.info("\t{s}", .{command.name});
         }
 
         std.log.info("started: {s}", .{event.user.name});
@@ -101,48 +114,46 @@ pub const App = struct {
 
     pub fn onInteraction(client: discord.Client, interaction: *const discord.Interaction) callconv(.c) void {
         if (interaction.type != .APPLICATION_COMMAND) return;
+        std.debug.print("interaction: {any}\n", .{interaction.*});
 
-        const command: Command = for (Command.commands) |command| {
-            if (std.mem.eql(u8, std.mem.span(interaction.data.?.name), command.name)) break command;
-        } else return;
-
-        if (command.onExecute) |onExecute| onExecute(client, interaction) catch |err| {
-            std.log.err("{t} in command {s}", .{ err, command.name });
-        };
+        Command.call(client, interaction.data.?.name, Command.Interaction.Internal.toInteraction(.{ .command = interaction }));
     }
 
     pub fn onMessage(client: discord.Client, event: *const discord.Message) callconv(.c) void {
         if (event.author.is_bot) return;
         const app = client.getData(App).?;
 
-        if (app.profiles.get(event.author.id) == null) app.profiles.put(app.allocator, event.author.id, .{}) catch |err| std.log.err("adding new stat: {t}", .{err});
-
-        const profile = app.profiles.getPtr(event.author.id).?;
+        const profile = app.getProfile(event.author.id);
         profile.messages += 1;
         if (profile.handleXp()) profile.xp += Profile.balance.xp_per_message;
 
-        app.save() catch |err| std.log.err("save failed: {t}", .{err});
+        app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
 
         if (std.mem.eql(u8, std.mem.span(event.content), "ping")) discord.Message.create(client, event.channel_id, .{ .content = "pong!" }) catch return;
         if (std.mem.eql(u8, std.mem.span(event.content), "ding")) discord.Message.create(client, event.channel_id, .{ .content = "dong!" }) catch return;
+
+        if (event.content[0] == '!') Command.call(client, event.content[1..], Command.Interaction.Internal.toInteraction(.{ .message = event }));
     }
 
     pub fn onReactionAdd(client: discord.Client, event: *const discord.message_reaction.Add) callconv(.c) void {
         const app = client.getData(App).?;
 
-        if (app.profiles.get(event.user_id) == null) app.profiles.put(app.allocator, event.user_id, .{}) catch |err| std.log.err("adding new stat: {t}", .{err});
-        const profile = app.profiles.getPtr(event.user_id).?;
+        const profile = app.getProfile(event.user_id);
         profile.reactions += 1;
         if (profile.handleXp()) profile.xp +|= Profile.balance.xp_per_reaction;
+
+        app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
     }
 
     pub fn onReactionRemove(client: discord.Client, event: *const discord.message_reaction.Remove) callconv(.c) void {
         const app = client.getData(App).?;
 
-        if (app.profiles.get(event.user_id) == null) app.profiles.put(app.allocator, event.user_id, .{}) catch |err| std.log.err("adding new stat: {t}", .{err});
-        const profile = app.profiles.getPtr(event.user_id).?;
+        const profile = app.getProfile(event.user_id);
         profile.reactions -|= 1;
         if (profile.handleXp()) profile.xp -|= Profile.balance.xp_per_reaction;
+
+        app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
+
     }
 };
 
@@ -166,7 +177,14 @@ pub fn main() !void {
     const client: discord.Client = discord.init(BOT_TOKEN) orelse return error.InitDiscordClient;
     defer client.cleanup();
 
-    client.addIntents(discord.GATEWAY.MESSAGE_CONTENT);
+    const intents =
+        discord.GATEWAY.GUILDS |
+        // discord.GATEWAY.GUILD_MEMBERS |
+        discord.GATEWAY.GUILD_MESSAGES |
+        discord.GATEWAY.GUILD_MESSAGE_REACTIONS |
+        discord.GATEWAY.MESSAGE_CONTENT;
+
+    client.addIntents(intents);
 
     client.setData(App, &app);
 

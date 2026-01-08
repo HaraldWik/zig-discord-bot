@@ -8,7 +8,7 @@ pub const command: Command = .{
     .onExecute = onExecute,
 };
 
-pub fn onExecute(client: discord.Client, interaction: *const discord.Interaction) !void {
+pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
     var prng: std.Random.DefaultPrng = .init(interaction.id);
     const random = prng.random();
 
@@ -18,7 +18,7 @@ pub fn onExecute(client: discord.Client, interaction: *const discord.Interaction
     var buf: [128]u8 = undefined;
     const content = try std.fmt.bufPrintSentinel(&buf, "{s} {s} [⠀](https://www.youtube.com/watch?v={s})", .{ video.name, video.description orelse "", video.url }, 0);
 
-    try interaction.respond(client, .{ .data = &.{ .content = content } }, null);
+    try interaction.respond(client, content);
 }
 
 pub const Video = struct {
