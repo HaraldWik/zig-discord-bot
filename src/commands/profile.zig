@@ -14,13 +14,8 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
 
     const profile = app.profiles.getPtr(interaction.user.id) orelse return interaction.respond(client, "You need to write a message to get a profile");
 
-    const display_name = if (interaction.member != null and interaction.member.?.nick != null)
-        interaction.member.?.nick.?
-    else
-        interaction.user.name; // fallback to global username
-
     var buf: [128]u8 = undefined;
-    const content = try std.fmt.bufPrintZ(&buf, "{s}\nmessages: {d}\nreactions: {d}\nxp: {d}", .{ display_name, profile.messages, profile.reactions, profile.xp });
+    const content = try std.fmt.bufPrintZ(&buf, "{s}\nmessages: {d}\nreactions: {d}\nxp: {d}", .{ profile.getName(), profile.messages, profile.reactions, profile.xp });
 
     try interaction.respond(client, content);
 }

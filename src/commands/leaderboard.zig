@@ -34,8 +34,7 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
     var buf: [256]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buf);
     try writer.writeAll("Leaderboard\n");
-    for (leaderboard.items, 0..) |entry, i| {
-        if (i > leaderboard.items.len) break;
+    for (leaderboard.items[0..@min(leaderboard_count, leaderboard.items.len)], 0..) |entry, i| {
         try writer.print("#{d} {s}: {d}xp\n", .{ i + 1, entry.value_ptr.getName(), entry.value_ptr.xp });
     }
 

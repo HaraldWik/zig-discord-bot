@@ -62,7 +62,7 @@ pub const Interaction = struct {
 pub fn call(client: discord.Client, command_name: [*:0]const u8, interaction: Interaction) void {
     for (commands) |command| {
         if (!std.mem.eql(u8, std.mem.span(command_name), command.name)) continue;
-        std.log.info("command '{s}'' called by {s}", .{ command_name, interaction.user.name });
+        std.log.info("command '{s}' called by {s}", .{ command_name, interaction.user.name });
         if (command.onExecute) |onExecute| onExecute(client, interaction) catch |err| {
             std.log.err("{t} when calling command {s}", .{ err, command_name });
             var buf: [128]u8 = undefined;

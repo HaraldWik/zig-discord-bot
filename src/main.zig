@@ -43,7 +43,7 @@ pub const Profile = struct {
         return buffer;
     }
 
-    pub fn decode(buf: []const u8) @This() {
+    pub fn decode(buf: [save_size]u8) @This() {
         var self: @This() = .{
             .id = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian()),
             .messages = std.mem.readInt(u64, buf[8..16], builtin.cpu.arch.endian()),
@@ -86,7 +86,6 @@ pub const App = struct {
 
         var it = self.profiles.iterator();
         while (it.next()) |entry| {
-            try writer.writeAll(&std.mem.toBytes(entry.key_ptr.*));
             try writer.writeAll(&entry.value_ptr.encode());
         }
 
@@ -97,17 +96,16 @@ pub const App = struct {
         var file = std.Io.Dir.cwd().openFile(self.io, data_dir ++ "profiles.bin", .{}) catch |err| if (err == error.FileNotFound) return else return err;
         defer file.close(self.io);
 
-        var buffer: [@sizeOf(u64) + @sizeOf(Profile)]u8 = undefined;
+        var buffer: [Profile.save_size + 1]u8 = undefined;
         var file_reader = file.reader(self.io, &buffer);
         const reader = &file_reader.interface;
 
         std.log.info("loading data", .{});
         while (true) {
             var slice = reader.take(buffer.len) catch |err| if (err == error.EndOfStream) break else return err;
-            const key = std.mem.readInt(u64, slice[0..8], builtin.cpu.arch.endian());
-            const profile: Profile = .decode(slice[8..]);
-            try self.profiles.put(self.allocator, key, profile);
-            // std.log.info("\tprofile: {s}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.getName(), profile.messages, profile.reactions, profile.xp });
+            const profile: Profile = .decode(slice[0..Profile.save_size]);
+            try self.profiles.put(self.allocator, profile.id, profile);
+            std.log.info("\tprofile: {s}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.getName(), profile.messages, profile.reactions, profile.xp });
         }
     }
 
