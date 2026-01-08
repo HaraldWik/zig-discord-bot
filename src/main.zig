@@ -2,7 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const discord = @import("discord");
 const Command = @import("commands/Command.zig");
-const concord = @import("concord");
 
 pub const std_options: std.Options = .{
     .logFn = logFn,
