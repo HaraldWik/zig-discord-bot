@@ -1498,7 +1498,7 @@ pub const modify_current_user_nick = extern struct {
     nick: [*c]u8 = null,
 };
 pub const add_guild_member_role = extern struct {
-    reason: [*c]u8 = null,
+    reason: ?[*:0]const u8 = null,
 };
 pub const remove_guild_member_role = extern struct {
     reason: [*c]u8 = null,
@@ -2761,6 +2761,9 @@ pub const Client = *opaque {
 
     extern fn discord_set_on_channel_pins_update(client: Client, callback: ?*const fn (client: Client, event: *const channel_pins_update) callconv(.c) void) void;
     pub const setOnChannelPinsUpdate = discord_set_on_channel_pins_update;
+
+    extern fn discord_add_guild_member_role(client: Client, guild_id: u64snowflake, user_id: u64snowflake, role_id: u64snowflake, params: *const add_guild_member_role, ret: ?*Return) ErrorCode;
+    pub const addGuildMemberRole = discord_add_guild_member_role;
 
     extern fn discord_set_on_thread_create(client: Client, callback: ?*const fn (client: Client, event: *const Channel) callconv(.c) void) void;
     pub const setOnThreadCreate = discord_set_on_thread_create;

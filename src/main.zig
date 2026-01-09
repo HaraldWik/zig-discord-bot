@@ -13,13 +13,24 @@ pub fn logFn(comptime level: std.log.Level, comptime scope: @EnumLiteral(), comp
 }
 
 const data_dir = "data/";
-const guild_id = 1377723883612016783;
+
+pub const Level = struct {
+    xp: u64,
+    role_id: ?u64 = null,
+
+    pub const Storage = struct {
+        guild_id: u64,
+        channel_id: u64,
+        table: []Level,
+    };
+};
 
 pub const Profile = struct {
     id: u64 = 0,
     messages: u64 = 0,
     reactions: u64 = 0,
     xp: u64 = 0,
+    level: u8 = 0,
 
     pub const balance = struct {
         const xp_per_message: u64 = 2;
@@ -71,6 +82,42 @@ pub const App = struct {
         }
     }
 
+    pub fn roleService(client: discord.Client) !void {
+        const scope = std.log.scoped(.role_service);
+        const app = client.getData(@This()).?;
+
+        var file = std.Io.Dir.cwd().openFile(app.io, data_dir ++ "level_table.json", .{}) catch |err| if (err == error.FileNotFound) return else return err;
+        defer file.close(app.io);
+        var buffer: []u8 = try app.allocator.alloc(u8, (try file.stat(app.io)).size);
+        defer app.allocator.free(buffer);
+        var reader = file.reader(app.io, buffer);
+        const slice = try reader.interface.take(buffer.len);
+
+        const storage: std.json.Parsed(Level.Storage) = try std.json.parseFromSlice(Level.Storage, app.allocator, slice, .{});
+        defer storage.deinit();
+
+        while (true) {
+            var it = app.profiles.valueIterator();
+            while (it.next()) |profile| {
+                for (storage.value.table, 0..) |element, i| {
+                    if (profile.level > i or profile.xp < element.xp) continue;
+                    if (element.role_id) |role_id| client.addGuildMemberRole(storage.value.guild_id, profile.id, role_id, &.{ .reason = "level up" }, null).toError() catch |err| {
+                        scope.err("{t}: addGuildMemberRole", .{err});
+                        continue;
+                    };
+                    var buf: [128]u8 = undefined;
+                    const content: [:0]const u8 = std.fmt.bufPrintSentinel(&buf, "🥳 <@{d}> leveled up to level {d}!", .{ profile.id, profile.level + 1 }, 0) catch unreachable;
+                    client.createMessage(storage.value.channel_id, &.{ .content = content.ptr }, null).toError() catch |err| {
+                        scope.err("{t}: createMessage", .{err});
+                        continue;
+                    };
+                    profile.level += 1;
+                }
+            }
+            try app.io.sleep(.fromMilliseconds(100), .real);
+        }
+    }
+
     pub fn onReady(client: discord.Client, event: *const discord.Ready) callconv(.c) void {
         std.log.info("registering commands", .{});
 
@@ -100,7 +147,7 @@ pub const App = struct {
 
         if (std.mem.startsWith(u8, std.mem.span(event.content), Command.message_command_prefix)) return Command.call(client, .fromInner(.{ .message = event }));
 
-        const app = client.getData(App).?;
+        const app = client.getData(@This()).?;
 
         if (app.profiles.get(event.author.id) == null) {
             app.profiles.put(app.allocator, event.author.id, .{ .id = event.author.id }) catch |err| std.log.err("{t} while adding new profile", .{err});
@@ -133,7 +180,7 @@ pub const App = struct {
     }
 
     pub fn onReactionAdd(client: discord.Client, event: *const discord.message_reaction.Add) callconv(.c) void {
-        const app = client.getData(App).?;
+        const app = client.getData(@This()).?;
 
         const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions += 1;
@@ -146,7 +193,7 @@ pub const App = struct {
     }
 
     pub fn onReactionRemove(client: discord.Client, event: *const discord.message_reaction.Remove) callconv(.c) void {
-        const app = client.getData(App).?;
+        const app = client.getData(@This()).?;
 
         const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions -|= 1;
@@ -180,6 +227,9 @@ pub fn main() !void {
 
     const client: discord.Client = discord.init(bot_token) orelse return error.InitDiscordClient;
     defer client.cleanup();
+
+    var role_service_thread: std.Thread = try .spawn(.{ .allocator = allocator }, App.roleService, .{client});
+    defer role_service_thread.join();
 
     const intents =
         discord.GATEWAY.GUILDS |
