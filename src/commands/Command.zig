@@ -10,6 +10,7 @@ onAutocomplete: ?Autocomplete = null, // @import("globglogabgelab.zig").onAutoco
 options: []const discord.ApplicationCommand.Option = &.{},
 
 pub const commands: []const @This() = &.{
+    @import("help.zig").command,
     @import("globglogabgelab.zig").command,
     @import("profile.zig").command,
     @import("leaderboard.zig").command,
@@ -98,10 +99,11 @@ pub const Interaction = struct {
                     if (std.mem.eql(u8, std.mem.span(opt.name), @tagName(name))) break i;
                 } else return null;
 
-                var it = std.mem.splitScalar(u8, std.mem.span(interaction.content), ' ');
+                var it = std.mem.splitScalar(u8, std.mem.span(interaction.content[message_command_prefix.len + self.inner.name().len ..]), ' ');
                 var i: usize = 0;
                 _ = it.next() orelse return null;
                 while (it.next()) |str| : (i += 1) {
+                    if (i > opt_name_index) return null;
                     if (i == opt_name_index) return str;
                 }
                 return null;
@@ -156,7 +158,7 @@ pub const Interaction = struct {
 pub fn call(client: discord.Client, interaction: Interaction) void {
     callWithError(client, interaction) catch |err| {
         const command_name = if (interaction.command) |command| command.name else interaction.inner.name();
-        std.log.err("{t} command: '{s}'", .{ err, command_name });
+        std.log.err("{t} command: '{s}' {s}", .{ err, command_name, interaction.user.name });
         interaction.respond(client, "Error {t} when calling command {s} ", .{ err, command_name }) catch {};
     };
 }

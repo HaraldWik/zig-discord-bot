@@ -17,12 +17,10 @@ pub const command: Command = .{
 };
 
 pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
-    const video: Video = if (interaction.option(.video_name)) |video_name| video: {
-        std.debug.print("Selected {s}\n", .{video_name});
-        for (Video.videos) |video| {
+    const video: Video = video: {
+        if (interaction.option(.video_name)) |video_name| for (Video.videos) |video|
             if (std.mem.eql(u8, video.name, video_name)) break :video video;
-        } else break :video Video.videos[0];
-    } else video: {
+
         var prng: std.Random.DefaultPrng = .init(interaction.id);
         const random = prng.random();
         const video_index = random.int(usize) % Video.videos.len;

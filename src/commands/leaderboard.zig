@@ -9,11 +9,24 @@ pub const command: Command = .{
     .name = "leaderboard",
     .description = "See who is the best in all aspects",
     .onExecute = onExecute,
+    .options = &.{
+        .{
+            .name = "limit",
+            .description = "Maximum number of entries to display",
+            .type = .NUMBER,
+        },
+    },
 };
 
-pub const leaderboard_count = 5;
+pub const default_leaderboard_limit: std.Io.Limit = .limited(5);
 
 pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
+    const limit: ?std.Io.Limit = if (interaction.option(.limit)) |limit_str|
+        .limited(try std.fmt.parseInt(std.meta.Tag(std.Io.Limit), limit_str, 10))
+    else
+        null;
+    if (limit orelse default_leaderboard_limit == .nothing) return error.LimitCanNotBeNothing;
+
     const app: *App = client.getData(App).?;
 
     if (app.profiles.count() == 0) return interaction.respond(client, "Leaderboard is empty", .{});
@@ -33,7 +46,7 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
     var buf: [256]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buf);
     try writer.writeAll("Leaderboard\n");
-    for (leaderboard.items[0..@min(leaderboard_count, leaderboard.items.len)], 0..) |profile, i| {
+    for (leaderboard.items[0..@min(@intFromEnum(limit orelse default_leaderboard_limit), leaderboard.items.len)], 0..) |profile, i| {
         const emoji = switch (i) {
             0 => "🥇",
             1 => "🥈",
