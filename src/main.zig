@@ -119,13 +119,13 @@ pub const App = struct {
     }
 
     pub fn onInteraction(client: discord.Client, interaction: *const discord.Interaction) callconv(.c) void {
-        Command.call(client, interaction.data.?.name, Command.Interaction.Internal.toInteraction(.{ .command = interaction }));
+        Command.call(client, .fromInner(.{ .command = interaction }));
     }
 
     pub fn onMessage(client: discord.Client, event: *const discord.Message) callconv(.c) void {
         if (event.author.is_bot) return;
 
-        if (event.content[0] == '!') return Command.call(client, event.content[1..], Command.Interaction.Internal.toInteraction(.{ .message = event }));
+        if (std.mem.startsWith(u8, std.mem.span(event.content), Command.message_command_prefix)) return Command.call(client, .fromInner(.{ .message = event }));
 
         const app = client.getData(App).?;
 

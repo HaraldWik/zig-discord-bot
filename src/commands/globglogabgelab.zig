@@ -71,7 +71,7 @@ pub const Video = struct {
         .{ .url = "7XBjuDkXJ60", .name = "Rap Glob" },
         .{ .url = "uQASsDVChTQ", .name = "Loves Books" },
         .{ .url = "FSAibrRAUjM", .name = "Glob On Me" },
-        .{ .url = "nV-ypF0L6Xs", .name = "Ear Rape", .description = "EAR WARNING ⚠️" },
+        .{ .url = "nV-ypF0L6Xs", .name = "Ear Rape", .description = "(EAR WARNING ⚠️)" },
         .{ .url = "TtqMwwfhErQ", .name = "Globglogabgalab Busters" },
         .{ .url = "CaWT1ayLyB0", .name = "Chop Suey" },
         .{ .url = "okZNjPP1VQ4", .name = "PPAP" },

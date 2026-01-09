@@ -16,6 +16,8 @@ pub const commands: []const @This() = &.{
     @import("meow.zig").command,
 };
 
+pub const message_command_prefix = "!";
+
 pub const Execute = *const fn (client: discord.Client, interaction: Interaction) anyerror!void;
 pub const Autocomplete = *const fn (client: discord.Client, interaction: Interaction) anyerror!void;
 pub const AutocompleteChoice = extern struct {
@@ -33,38 +35,56 @@ pub const Interaction = struct {
     guild_id: u64,
     application_id: u64,
 
-    internal: Internal,
+    command: ?Command, // This can safely be unwrapped in command callbacks such as onExecute and onAutocomplete
+    inner: Inner,
 
-    pub const Internal = union(enum) {
+    pub const Inner = union(enum) {
         command: *const discord.Interaction,
         message: *const discord.Message,
 
-        pub fn toInteraction(self: @This()) Interaction {
+        pub fn name(self: @This()) []const u8 {
             return switch (self) {
-                .command => |interaction| .{
-                    .internal = self,
-                    .id = interaction.id,
-                    .user = interaction.user orelse interaction.member.?.user,
-                    .member = interaction.member,
-                    .channel_id = interaction.channel_id,
-                    .guild_id = interaction.guild_id,
-                    .application_id = interaction.application_id,
-                },
-                .message => |interaction| .{
-                    .internal = self,
-                    .id = interaction.id,
-                    .user = interaction.author,
-                    .member = interaction.member,
-                    .channel_id = interaction.channel_id,
-                    .guild_id = interaction.guild_id,
-                    .application_id = interaction.application_id,
+                .command => |interaction| std.mem.span(interaction.data.?.name),
+                .message => |interaction| name: {
+                    const command_name: []const u8 = std.mem.span(interaction.content[message_command_prefix.len..]);
+                    const end = std.mem.indexOfScalar(u8, command_name, ' ') orelse command_name.len;
+                    break :name command_name[0..end];
                 },
             };
         }
     };
 
-    pub fn option(self: @This(), comptime name: @EnumLiteral()) ?[:0]const u8 {
-        switch (self.internal) {
+    pub fn fromInner(inner: Inner) Interaction {
+        const command: ?Command = for (commands) |command| {
+            if (std.mem.eql(u8, inner.name(), command.name)) break command;
+        } else null;
+
+        return switch (inner) {
+            .command => |interaction| .{
+                .command = command,
+                .inner = inner,
+                .id = interaction.id,
+                .user = interaction.user orelse interaction.member.?.user,
+                .member = interaction.member,
+                .channel_id = interaction.channel_id,
+                .guild_id = interaction.guild_id,
+                .application_id = interaction.application_id,
+            },
+            .message => |interaction| .{
+                .command = command,
+                .inner = inner,
+                .id = interaction.id,
+                .user = interaction.author,
+                .member = interaction.member,
+                .channel_id = interaction.channel_id,
+                .guild_id = interaction.guild_id,
+                .application_id = interaction.application_id,
+            },
+        };
+    }
+
+    pub fn option(self: @This(), comptime name: @EnumLiteral()) ?[]const u8 {
+        switch (self.inner) {
             .command => |interaction| {
                 if (interaction.data == null) return null;
                 const options = interaction.data.?.options orelse return null;
@@ -74,14 +94,24 @@ pub const Interaction = struct {
                 }
             },
             .message => |interaction| {
-                _ = interaction;
+                const opt_name_index: usize = for (self.command.?.options, 0..) |opt, i| {
+                    if (std.mem.eql(u8, std.mem.span(opt.name), @tagName(name))) break i;
+                } else return null;
+
+                var it = std.mem.splitScalar(u8, std.mem.span(interaction.content), ' ');
+                var i: usize = 0;
+                _ = it.next() orelse return null;
+                while (it.next()) |str| : (i += 1) {
+                    if (i == opt_name_index) return str;
+                }
+                return null;
             },
         }
         return null;
     }
 
-    pub fn focused(self: @This()) ?[:0]const u8 {
-        switch (self.internal) {
+    pub fn focused(self: @This()) ?[:0]const u8 { // TODO: fix
+        switch (self.inner) {
             .command => |interaction| {
                 if (interaction.data == null) return null;
                 const options = interaction.data.?.options orelse return null;
@@ -100,7 +130,7 @@ pub const Interaction = struct {
     pub fn respond(self: @This(), client: discord.Client, comptime format: []const u8, args: anytype) !void {
         var buf: [256]u8 = undefined;
         const content = try std.fmt.bufPrintSentinel(&buf, format, args, 0);
-        switch (self.internal) {
+        switch (self.inner) {
             .command => |interaction| try interaction.respond(client, .{ .data = &.{ .content = content.ptr } }, null),
             .message => |interaction| try discord.Message.create(client, interaction.channel_id, .{ .content = content }),
         }
@@ -109,7 +139,7 @@ pub const Interaction = struct {
     pub fn autocomplete(self: @This(), client: discord.Client, choices: []const AutocompleteChoice) !void {
         if (choices.len > AutocompleteChoice.max_count) return error.TooManyAutocompleteChoices;
 
-        switch (self.internal) {
+        switch (self.inner) {
             .command => |interaction| try interaction.respond(client, .{
                 .type = .APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
                 .data = &.{ .choices = &.{
@@ -123,20 +153,18 @@ pub const Interaction = struct {
     }
 };
 
-pub fn call(client: discord.Client, command_name: [*:0]const u8, interaction: Interaction) void {
-    callWithError(client, command_name, interaction) catch |err| {
-        std.log.err("{t} when calling command {s}", .{ err, command_name });
+pub fn call(client: discord.Client, interaction: Interaction) void {
+    callWithError(client, interaction) catch |err| {
+        const command_name = if (interaction.command) |command| command.name else interaction.inner.name();
+        std.log.err("{t} command: '{s}'", .{ err, command_name });
         interaction.respond(client, "Error {t} when calling command {s} ", .{ err, command_name }) catch {};
     };
 }
 
-fn callWithError(client: discord.Client, command_name: [*:0]const u8, interaction: Interaction) !void {
-    const command: @This() = for (commands) |command| {
-        if (std.mem.eql(u8, std.mem.span(command_name), command.name)) break command;
-    } else return error.CommandNotFound;
-
-    switch (interaction.internal) {
-        .command => switch (interaction.internal.command.type) {
+fn callWithError(client: discord.Client, interaction: Interaction) !void {
+    const command = interaction.command orelse return error.CommandNotFound;
+    switch (interaction.inner) {
+        .command => |inner| switch (inner.type) {
             .APPLICATION_COMMAND => if (command.onExecute) |onExecute| {
                 try onExecute(client, interaction);
                 std.log.info("executed command '{s}' by {s}", .{ command.name, interaction.user.name });
