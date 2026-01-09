@@ -133,8 +133,17 @@ pub const Interaction = struct {
         var buf: [256]u8 = undefined;
         const content = try std.fmt.bufPrintSentinel(&buf, format, args, 0);
         switch (self.inner) {
-            .command => |interaction| try interaction.respond(client, .{ .data = &.{ .content = content.ptr } }, null),
-            .message => |interaction| try discord.Message.create(client, interaction.channel_id, .{ .content = content }),
+            .command => |interaction| try interaction.respond(client, .{
+                .data = &.{
+                    .content = content.ptr,
+                },
+            }, null),
+            .message => |interaction| try discord.Message.create(client, interaction.channel_id, .{
+                .content = content,
+                .allowed_mentions = &.{
+                    .users = &discord.snowflakes{},
+                },
+            }),
         }
     }
 

@@ -20,9 +20,6 @@ pub const Profile = struct {
     messages: u64 = 0,
     reactions: u64 = 0,
     xp: u64 = 0,
-    cooldown: std.time.Instant = std.mem.zeroes(std.time.Instant),
-
-    pub const save_size = @sizeOf(@This()) - @sizeOf(std.time.Instant);
 
     pub const balance = struct {
         const xp_per_message: u64 = 2;
@@ -30,31 +27,14 @@ pub const Profile = struct {
         const cooldown_s = std.time.ns_per_ms * 3767;
     };
 
-    pub fn encode(self: @This()) [save_size]u8 {
-        var buffer: [save_size]u8 = undefined;
-
-        std.mem.writeInt(u64, buffer[0..8], self.id, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[8..16], self.messages, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[16..24], self.reactions, builtin.cpu.arch.endian());
-        std.mem.writeInt(u64, buffer[24..32], self.xp, builtin.cpu.arch.endian());
-
-        return buffer;
-    }
-
-    pub fn decode(buf: []const u8) @This() {
-        if (buf.len != save_size) @panic("invalid buffer size");
-        return .{
-            .id = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian()),
-            .messages = std.mem.readInt(u64, buf[8..16], builtin.cpu.arch.endian()),
-            .reactions = std.mem.readInt(u64, buf[16..24], builtin.cpu.arch.endian()),
-            .xp = std.mem.readInt(u64, buf[24..32], builtin.cpu.arch.endian()),
+    pub fn handleXp(self: *@This(), app: *App) bool {
+        const cooldown = app.cooldowns.getPtr(self.id) orelse {
+            app.cooldowns.put(app.allocator, self.id, std.time.Instant.now() catch std.mem.zeroes(std.time.Instant)) catch unreachable;
+            return true;
         };
-    }
-
-    pub fn handleXp(self: *@This()) bool {
         const now = std.time.Instant.now() catch unreachable;
-        const state = now.since(self.cooldown) > balance.cooldown_s;
-        if (state) self.cooldown = now;
+        const state = now.since(cooldown.*) > balance.cooldown_s;
+        if (state) cooldown.* = now;
         return state;
     }
 };
@@ -63,38 +43,31 @@ pub const App = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
     profiles: std.AutoHashMapUnmanaged(discord.u64snowflake, Profile) = .empty,
+    cooldowns: std.AutoHashMapUnmanaged(discord.u64snowflake, std.time.Instant) = .empty,
 
     pub fn close(self: *@This()) void {
         self.profiles.deinit(self.allocator);
     }
 
     pub fn save(self: *@This()) !void {
-        var allocating: std.Io.Writer.Allocating = .init(self.allocator);
-        defer allocating.deinit();
-        const writer: *std.Io.Writer = &allocating.writer;
-
-        var it = self.profiles.iterator();
-        while (it.next()) |entry| {
-            try writer.writeAll(&entry.value_ptr.encode());
-        }
-
-        try std.Io.Dir.cwd().writeFile(self.io, .{ .sub_path = data_dir ++ "profiles.bin", .data = writer.buffered() });
+        var it = self.profiles.valueIterator();
+        const json = try std.json.Stringify.valueAlloc(self.allocator, it.items[0..self.profiles.count()], .{ .whitespace = .indent_tab });
+        defer self.allocator.free(json);
+        try std.Io.Dir.cwd().writeFile(self.io, .{ .sub_path = data_dir ++ "profiles.json", .data = json });
     }
 
     pub fn load(self: *@This()) !void {
-        var file = std.Io.Dir.cwd().openFile(self.io, data_dir ++ "profiles.bin", .{}) catch |err| if (err == error.FileNotFound) return else return err;
+        var file = std.Io.Dir.cwd().openFile(self.io, data_dir ++ "profiles.json", .{}) catch |err| if (err == error.FileNotFound) return else return err;
         defer file.close(self.io);
+        var buffer: []u8 = try self.allocator.alloc(u8, (try file.stat(self.io)).size);
+        defer self.allocator.free(buffer);
+        var reader = file.reader(self.io, buffer);
+        const slice = try reader.interface.take(buffer.len);
 
-        var buffer: [Profile.save_size]u8 = undefined;
-        var file_reader = file.reader(self.io, &buffer);
-        const reader = &file_reader.interface;
-
-        std.log.info("loading data", .{});
-        while (true) {
-            var slice = reader.take(buffer.len) catch |err| if (err == error.EndOfStream) break else return err;
-            const profile: Profile = .decode(slice[0..Profile.save_size]);
+        const parsed: std.json.Parsed([]Profile) = try std.json.parseFromSlice([]Profile, self.allocator, slice, .{});
+        defer parsed.deinit();
+        for (parsed.value) |profile| {
             try self.profiles.put(self.allocator, profile.id, profile);
-            std.log.info("\tprofile: {d}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.id, profile.messages, profile.reactions, profile.xp });
         }
     }
 
@@ -135,12 +108,26 @@ pub const App = struct {
 
         const profile = app.profiles.getPtr(event.author.id).?;
         profile.messages += 1;
-        if (profile.handleXp()) profile.xp += Profile.balance.xp_per_message;
+        if (profile.handleXp(app)) profile.xp += Profile.balance.xp_per_message;
 
         app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
+        if (std.mem.eql(u8, std.mem.span(event.content), "ping")) return discord.Message.create(client, event.channel_id, .{ .content = "pong!" }) catch return;
+        if (std.mem.containsAtLeast(u8, std.mem.span(event.content), 1, "jimmy")) return discord.Message.create(client, event.channel_id, .{ .content = "Did someone say Jimmy?" }) catch return; // Jimmyfication
 
-        if (std.mem.eql(u8, std.mem.span(event.content), "ping")) discord.Message.create(client, event.channel_id, .{ .content = "pong!" }) catch return;
-        if (std.mem.eql(u8, std.mem.span(event.content), "ding")) discord.Message.create(client, event.channel_id, .{ .content = "dong!" }) catch return;
+        const bad_words: []const []const [:0]const u8 = &.{
+            &.{ "std.Io", "🤡" },
+            &.{ "typescript", "🤨", "😮", "😰", "🤡", "🤢", "🤮", "🚽", "🤬" },
+            &.{ "javascript", "🤨", "😮", "😰", "🤡", "🤢", "🤮", "🚽", "🤬" },
+            &.{ "python", "😰", "🤮", "🤢" },
+        };
+
+        for (bad_words) |bad_word| {
+            if (std.mem.containsAtLeast(u8, std.mem.span(event.content), 1, bad_word[0])) {
+                for (bad_word[1..]) |emoji| {
+                    _ = client.createReaction(event.channel_id, event.id, 0, emoji, null);
+                }
+            }
+        }
     }
 
     pub fn onReactionAdd(client: discord.Client, event: *const discord.message_reaction.Add) callconv(.c) void {
@@ -148,7 +135,7 @@ pub const App = struct {
 
         const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions += 1;
-        if (profile.handleXp()) {
+        if (profile.handleXp(app)) {
             const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
             profile.xp +|= amount;
         }
@@ -161,7 +148,7 @@ pub const App = struct {
 
         const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions -|= 1;
-        if (profile.handleXp()) {
+        if (profile.handleXp(app)) {
             const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
             profile.xp -|= amount;
         }

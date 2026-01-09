@@ -56,4 +56,5 @@ const cats: []const []const u8 = &.{
     "https://tenor.com/view/silly-reaction-meme-stan-twitter-funny-stressed-gif-7713976294327515532",
     "https://tenor.com/view/happy-catto-gif-15346413526676920650",
     "https://media.tenor.com/h8TMXz1liyUAAAAd/image.gif",
+    "https://cdn.discordapp.com/attachments/1377723884161339694/1459201962770829593/977cbca74884ac361aeefda6440d35d5.jpg?ex=69626b3a&is=696119ba&hm=43feb34e5aa477333eef6cf4cd9c5e23e5e45be3f0daa71ea779a855765e7fcf&",
 };

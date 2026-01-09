@@ -38,7 +38,7 @@ pub const json_values = extern struct {
 };
 pub const snowflakes = extern struct {
     size: c_int = 0,
-    array: [*]u64snowflake,
+    array: [*]const u64snowflake = &.{},
     realsize: c_int = 0,
 };
 pub const bitmasks = extern struct {
@@ -1186,8 +1186,8 @@ pub const Message = extern struct {
         content: ?[*:0]const u8 = null,
         tts: bool = false,
         embeds: ?*embeds = null,
-        allowed_mentions: [*c]allowed_mention = null,
-        message_reference: [*c]message_reference = null,
+        allowed_mentions: ?*const allowed_mention = null,
+        message_reference: ?*const message_reference = null,
         components: [*c]components = null,
         sticker_ids: [*c]snowflakes = null,
         attachments: [*c]attachments = null,
@@ -1234,9 +1234,9 @@ pub const channel_mention = extern struct {
     name: [*c]u8 = null,
 };
 pub const allowed_mention = extern struct {
-    parse: [*c]strings = null,
-    roles: [*c]snowflakes = null,
-    users: [*c]snowflakes = null,
+    parse: ?*const strings = null,
+    roles: ?*const snowflakes = null,
+    users: ?*const snowflakes = null,
     replied_user: bool = false,
 };
 pub const thread_response_body = extern struct {
