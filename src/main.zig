@@ -175,6 +175,7 @@ pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{ .safety = true }) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
     var threaded: std.Io.Threaded = .init_single_threaded;
     defer threaded.deinit();
     const io = threaded.io();
@@ -186,9 +187,9 @@ pub fn main() !void {
     defer app.close();
     try app.load();
 
-    const BOT_TOKEN: [*:0]const u8 = @embedFile("TOKEN2");
+    const bot_token = std.c.getenv("DISCORD_TOKEN") orelse return error.NoDiscordTokenEnviormentVariable;
 
-    const client: discord.Client = discord.init(BOT_TOKEN) orelse return error.InitDiscordClient;
+    const client: discord.Client = discord.init(bot_token) orelse return error.InitDiscordClient;
     defer client.cleanup();
 
     const intents =
