@@ -187,7 +187,7 @@ pub fn main() !void {
     defer app.close();
     try app.load();
 
-    const bot_token = std.c.getenv("DISCORD_TOKEN") orelse return error.NoDiscordTokenEnviormentVariable;
+    const bot_token = std.c.getenv("DISCORD_TOKEN") orelse @embedFile("TOKEN");
 
     const client: discord.Client = discord.init(bot_token) orelse return error.InitDiscordClient;
     defer client.cleanup();
