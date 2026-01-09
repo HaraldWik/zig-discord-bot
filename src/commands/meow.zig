@@ -16,10 +16,7 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
     const cat = cats[cat_index % cats.len];
     const emoji = emojis[cat_index % emojis.len];
 
-    var buf: [256]u8 = undefined;
-    const content = try std.fmt.bufPrintSentinel(&buf, "{s} [⠀]({s})", .{ emoji, cat }, 0);
-
-    try interaction.respond(client, content);
+    try interaction.respond(client, "{s} [⠀]({s})", .{ emoji, cat });
 }
 
 const emojis: []const []const u8 = &.{ "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾", "🐕", "🐩", "🐱", "🐈‍⬛", "🦁", "🐯", "🐅", "🐆" };

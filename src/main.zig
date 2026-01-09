@@ -20,7 +20,6 @@ pub const Profile = struct {
     messages: u64 = 0,
     reactions: u64 = 0,
     xp: u64 = 0,
-    name: [33]u8 = @splat(0),
     cooldown: std.time.Instant = std.mem.zeroes(std.time.Instant),
 
     pub const save_size = @sizeOf(@This()) - @sizeOf(std.time.Instant);
@@ -38,22 +37,18 @@ pub const Profile = struct {
         std.mem.writeInt(u64, buffer[8..16], self.messages, builtin.cpu.arch.endian());
         std.mem.writeInt(u64, buffer[16..24], self.reactions, builtin.cpu.arch.endian());
         std.mem.writeInt(u64, buffer[24..32], self.xp, builtin.cpu.arch.endian());
-        @memcpy(buffer[32..65], self.name[0..]);
 
         return buffer;
     }
 
     pub fn decode(buf: []const u8) @This() {
         if (buf.len != save_size) @panic("invalid buffer size");
-        var self: @This() = .{
+        return .{
             .id = std.mem.readInt(u64, buf[0..8], builtin.cpu.arch.endian()),
             .messages = std.mem.readInt(u64, buf[8..16], builtin.cpu.arch.endian()),
             .reactions = std.mem.readInt(u64, buf[16..24], builtin.cpu.arch.endian()),
             .xp = std.mem.readInt(u64, buf[24..32], builtin.cpu.arch.endian()),
         };
-        const name = buf[32..65];
-        @memcpy(self.name[0..name.len], name);
-        return self;
     }
 
     pub fn handleXp(self: *@This()) bool {
@@ -61,10 +56,6 @@ pub const Profile = struct {
         const state = now.since(self.cooldown) > balance.cooldown_s;
         if (state) self.cooldown = now;
         return state;
-    }
-
-    pub fn getName(self: @This()) [:0]const u8 {
-        return std.mem.span(@as([*:0]const u8, @ptrCast(self.name[0..].ptr)));
     }
 };
 
@@ -103,7 +94,7 @@ pub const App = struct {
             var slice = reader.take(buffer.len) catch |err| if (err == error.EndOfStream) break else return err;
             const profile: Profile = .decode(slice[0..Profile.save_size]);
             try self.profiles.put(self.allocator, profile.id, profile);
-            std.log.info("\tprofile: {s}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.name, profile.messages, profile.reactions, profile.xp });
+            std.log.info("\tprofile: {d}, messages: {d}, reactions: {d}, xp: {d}", .{ profile.id, profile.messages, profile.reactions, profile.xp });
         }
     }
 
@@ -128,8 +119,6 @@ pub const App = struct {
     }
 
     pub fn onInteraction(client: discord.Client, interaction: *const discord.Interaction) callconv(.c) void {
-        if (interaction.type != .APPLICATION_COMMAND) return;
-
         Command.call(client, interaction.data.?.name, Command.Interaction.Internal.toInteraction(.{ .command = interaction }));
     }
 
@@ -141,13 +130,7 @@ pub const App = struct {
         const app = client.getData(App).?;
 
         if (app.profiles.get(event.author.id) == null) {
-            var new_profile: Profile = .{ .id = event.author.id };
-            const name = std.mem.span(if (event.member != null and event.member.?.nick != null)
-                event.member.?.nick.?
-            else
-                event.author.name); // fallback to global username
-            @memcpy(new_profile.name[0..name.len], name);
-            app.profiles.put(app.allocator, new_profile.id, new_profile) catch |err| std.log.err("{t} while adding new profile", .{err});
+            app.profiles.put(app.allocator, event.author.id, .{ .id = event.author.id }) catch |err| std.log.err("{t} while adding new profile", .{err});
         }
 
         const profile = app.profiles.getPtr(event.author.id).?;

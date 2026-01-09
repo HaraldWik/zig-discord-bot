@@ -2096,32 +2096,6 @@ pub const application_command_permission_types = enum(c_uint) {
     USER = 2,
     CHANNEL = 3,
 };
-pub const application_command_option_choice = extern struct {
-    name: [*c]u8 = null,
-    value: [*c]u8 = null,
-};
-pub const application_command_option_choices = extern struct {
-    size: c_int = 0,
-    array: [*]application_command_option_choice,
-    realsize: c_int = 0,
-};
-pub const application_command_option = extern struct {
-    type: application_command_option_types,
-    name: [*c]u8 = null,
-    description: [*c]u8 = null,
-    required: bool = false,
-    choices: [*c]application_command_option_choices = null,
-    options: [*c]application_command_options = null,
-    channel_types: [*c]integers = null,
-    min_value: [*c]u8 = null,
-    max_value: [*c]u8 = null,
-    autocomplete: bool = false,
-};
-pub const application_command_options = extern struct {
-    size: c_int = 0,
-    array: [*]application_command_option = undefined,
-    realsize: c_int = 0,
-};
 pub const ApplicationCommand = extern struct {
     id: u64snowflake = 0,
     type: Type,
@@ -2129,7 +2103,7 @@ pub const ApplicationCommand = extern struct {
     guild_id: u64snowflake = 0,
     name: [*c]u8 = null,
     description: [*c]u8 = null,
-    options: [*c]application_command_options = null,
+    options: [*c]Options = null,
     default_member_permissions: u64bitmask = 0,
     dm_permission: bool = false,
     default_permission: bool = false,
@@ -2139,6 +2113,35 @@ pub const ApplicationCommand = extern struct {
         CHAT_INPUT = 1,
         USER = 2,
         MESSAGE = 3,
+    };
+
+    pub const Option = extern struct {
+        type: application_command_option_types = .STRING,
+        name: [*:0]const u8,
+        description: [*:0]const u8,
+        required: bool = false,
+        choices: [*c]OptionChoices = null,
+        options: ?*Options = null,
+        channel_types: [*c]integers = null,
+        min_value: [*c]u8 = null,
+        max_value: [*c]u8 = null,
+        autocomplete: bool = false,
+    };
+
+    pub const Options = extern struct {
+        size: c_int = 0,
+        array: [*]const ApplicationCommand.Option = undefined,
+        realsize: c_int = 0,
+    };
+
+    pub const OptionChoice = extern struct {
+        name: [*:0]const u8,
+        value: [*:0]const u8,
+    };
+    pub const OptionChoices = extern struct {
+        size: c_int = 0,
+        array: [*]const OptionChoice,
+        realsize: c_int = 0,
     };
 
     pub const Return = struct {
@@ -2158,9 +2161,9 @@ pub const application_command_interaction_data_options = extern struct {
     realsize: c_int = 0,
 };
 pub const application_command_interaction_data_option = extern struct {
-    name: [*c]u8 = null,
+    name: [*:0]const u8,
     type: application_command_option_types,
-    value: [*c]u8 = null,
+    value: [*:0]const u8,
     options: [*c]application_command_interaction_data_options = null,
     focused: bool = false,
 };
@@ -2188,7 +2191,7 @@ pub const guild_application_command_permissions = extern struct {
 pub const create_global_application_command = extern struct {
     name: [*c]u8 = null,
     description: [*c]u8 = null,
-    options: [*c]application_command_options = null,
+    options: [*c]ApplicationCommand.Options = null,
     default_member_permissions: u64bitmask = 0,
     dm_permission: bool = false,
     default_permission: bool = false,
@@ -2197,7 +2200,7 @@ pub const create_global_application_command = extern struct {
 pub const edit_global_application_command = extern struct {
     name: [*c]u8 = null,
     description: [*c]u8 = null,
-    options: [*c]application_command_options = null,
+    options: [*c]ApplicationCommand.Options = null,
     default_member_permissions: u64bitmask = 0,
     dm_permission: bool = false,
     default_permission: bool = false,
@@ -2205,7 +2208,7 @@ pub const edit_global_application_command = extern struct {
 pub const edit_guild_application_command = extern struct {
     name: [*c]u8 = null,
     description: [*c]u8 = null,
-    options: [*c]application_command_options = null,
+    options: [*c]ApplicationCommand.Options = null,
     default_member_permissions: u64bitmask = 0,
     default_permission: bool = false,
 };
@@ -2215,7 +2218,7 @@ pub const bulk_overwrite_guild_application_commands = extern struct {
     name_localizations: [*c]strings = null,
     description: [*c]u8 = null,
     description_localizations: [*c]strings = null,
-    options: [*c]application_command_options = null,
+    options: [*c]ApplicationCommand.Options = null,
     default_member_permissions: u64bitmask = 0,
     dm_permission: bool = false,
     type: ApplicationCommand.Type,
@@ -2248,7 +2251,7 @@ pub const Interaction = extern struct {
         name: [*:0]const u8,
         type: ApplicationCommand.Type,
         resolved: [*c]resolved_data = null,
-        options: [*c]application_command_interaction_data_options = null,
+        options: ?*application_command_interaction_data_options = null,
         custom_id: [*c]const u8 = null,
         component_type: component_types,
         values: [*c]strings = null,
@@ -2288,11 +2291,11 @@ pub const Interaction = extern struct {
 pub const interaction_callback_data = extern struct {
     components: [*c]components = null,
     tts: bool = false,
-    content: [*:0]const u8,
+    content: ?[*:0]const u8 = null,
     embeds: ?*embeds = null,
     flags: u64bitmask = 0,
     attachments: [*c]attachments = null,
-    choices: [*c]application_command_option_choices = null,
+    choices: ?*const ApplicationCommand.OptionChoices = null,
     custom_id: [*c]u8 = null,
     title: [*c]u8 = null,
 };
@@ -2327,7 +2330,7 @@ pub const edit_followup_message = extern struct {
 pub const CreateGlobalApplicationCommand = struct {
     name: [*:0]const u8,
     description: [*:0]const u8,
-    options: ?*application_command_options = null,
+    options: ?*ApplicationCommand.Options = null,
     default_member_permissions: u64bitmask = 0,
     dm_permission: bool = false,
     default_permission: bool = true,
@@ -2339,7 +2342,7 @@ pub const CreateGlobalApplicationCommand = struct {
 pub const CreateGuildApplicationCommand = struct {
     name: [*:0]const u8,
     description: [*:0]const u8,
-    options: ?*application_command_options = null,
+    options: ?*ApplicationCommand.Options = null,
     default_member_permissions: u64bitmask = 0,
     dm_permission: bool = false,
     default_permission: bool = true,
@@ -2446,19 +2449,19 @@ pub const CHANNEL = enum(c_int) {
     HIDE_MEDIA_DOWNLOAD_OPTIONS = 1 << 5,
 };
 
-pub const MESSAGE = enum(c_int) {
-    CROSSPOSTED = 1 << 0,
-    IS_CROSSPOST = 1 << 1,
-    SUPPRESS_EMBEDS = 1 << 2,
-    SOURCE_MESSAGE_DELETED = 1 << 3,
-    URGENT = 1 << 4,
-    HAS_THREAD = 1 << 5,
-    EPHEMERAL = 1 << 6,
-    LOADING = 1 << 7,
-    FAILED_TO_MENTION_SOME_ROLES_IN_THREAD = 1 << 8,
-    SUPPRESS_NOTIFICATIONS = 1 << 12,
-    IS_VOICE_MESSAGE = 1 << 13,
-    HAS_COMPONENTS_V2 = 1 << 15,
+pub const MESSAGE = struct {
+    pub const CROSSPOSTED: u64 = 1 << 0;
+    pub const IS_CROSSPOST: u64 = 1 << 1;
+    pub const SUPPRESS_EMBEDS: u64 = 1 << 2;
+    pub const SOURCE_MESSAGE_DELETED: u64 = 1 << 3;
+    pub const URGENT: u64 = 1 << 4;
+    pub const HAS_THREAD: u64 = 1 << 5;
+    pub const EPHEMERAL: u64 = 1 << 6;
+    pub const LOADING: u64 = 1 << 7;
+    pub const FAILED_TO_MENTION_SOME_ROLES_IN_THREAD: u64 = 1 << 8;
+    pub const SUPPRESS_NOTIFICATIONS: u64 = 1 << 12;
+    pub const IS_VOICE_MESSAGE: u64 = 1 << 13;
+    pub const HAS_COMPONENTS_V2: u64 = 1 << 15;
 };
 pub const ATTACHMENT = enum(c_int) {
     IS_REMIX = 1 << 2,
@@ -2518,48 +2521,48 @@ pub const ACTIVITY = enum(c_int) {
     PARTY_PRIVACY_VOICE_CHANNEL = 1 << 7,
     EMBEDDED = 1 << 8,
 };
-pub const PERM = enum(c_int) {
-    CREATE_INSTANT_INVITE = 1 << 0,
-    KICK_MEMBERS = 1 << 1,
-    BAN_MEMBERS = 1 << 2,
-    ADMINISTRATOR = 1 << 3,
-    MANAGE_CHANNELS = 1 << 4,
-    MANAGE_GUILD = 1 << 5,
-    ADD_REACTIONS = 1 << 6,
-    VIEW_AUDIT_LOG = 1 << 7,
-    PRIORITY_SPEAKER = 1 << 8,
-    STREAM = 1 << 9,
-    VIEW_CHANNEL = 1 << 10,
-    SEND_MESSAGES = 1 << 11,
-    SEND_TTS_MESSAGES = 1 << 12,
-    MANAGE_MESSAGES = 1 << 13,
-    EMBED_LINKS = 1 << 14,
-    ATTACH_FILES = 1 << 15,
-    READ_MESSAGE_HISTORY = 1 << 16,
-    MENTION_EVERYONE = 1 << 17,
-    USE_EXTERNAL_EMOJIS = 1 << 18,
-    VIEW_GUILD_INSIGHTS = 1 << 19,
-    CONNECT = 1 << 20,
-    SPEAK = 1 << 21,
-    MUTE_MEMBERS = 1 << 22,
-    DEAFEN_MEMBERS = 1 << 23,
-    MOVE_MEMBERS = 1 << 24,
-    USE_VAD = 1 << 25,
-    CHANGE_NICKNAME = 1 << 26,
-    MANAGE_NICKNAMES = 1 << 27,
-    MANAGE_ROLES = 1 << 28,
-    MANAGE_WEBHOOKS = 1 << 29,
-    MANAGE_EMOJIS_AND_STICKERS = 1 << 30,
-    USE_APPLICATION_COMMANDS = 1 << 31,
-    REQUEST_TO_SPEAK = 1 << 32,
-    MANAGE_EVENTS = 1 << 33,
-    MANAGE_THREADS = 1 << 34,
-    CREATE_PUBLIC_THREADS = 1 << 35,
-    CREATE_PRIVATE_THREADS = 1 << 36,
-    USE_EXTERNAL_STICKERS = 1 << 37,
-    SEND_MESSAGES_IN_THREADS = 1 << 38,
-    START_EMBEDDED_ACTIVITIES = 1 << 39,
-    MODERATE_MEMBERS = 1 << 40,
+pub const PERM = struct {
+    pub const CREATE_INSTANT_INVITE: u64 = 1 << 0;
+    pub const KICK_MEMBERS: u64 = 1 << 1;
+    pub const BAN_MEMBERS: u64 = 1 << 2;
+    pub const ADMINISTRATOR: u64 = 1 << 3;
+    pub const MANAGE_CHANNELS: u64 = 1 << 4;
+    pub const MANAGE_GUILD: u64 = 1 << 5;
+    pub const ADD_REACTIONS: u64 = 1 << 6;
+    pub const VIEW_AUDIT_LOG: u64 = 1 << 7;
+    pub const PRIORITY_SPEAKER: u64 = 1 << 8;
+    pub const STREAM: u64 = 1 << 9;
+    pub const VIEW_CHANNEL: u64 = 1 << 10;
+    pub const SEND_MESSAGES: u64 = 1 << 11;
+    pub const SEND_TTS_MESSAGES: u64 = 1 << 12;
+    pub const MANAGE_MESSAGES: u64 = 1 << 13;
+    pub const EMBED_LINKS: u64 = 1 << 14;
+    pub const ATTACH_FILES: u64 = 1 << 15;
+    pub const READ_MESSAGE_HISTORY: u64 = 1 << 16;
+    pub const MENTION_EVERYONE: u64 = 1 << 17;
+    pub const USE_EXTERNAL_EMOJIS: u64 = 1 << 18;
+    pub const VIEW_GUILD_INSIGHTS: u64 = 1 << 19;
+    pub const CONNECT: u64 = 1 << 20;
+    pub const SPEAK: u64 = 1 << 21;
+    pub const MUTE_MEMBERS: u64 = 1 << 22;
+    pub const DEAFEN_MEMBERS: u64 = 1 << 23;
+    pub const MOVE_MEMBERS: u64 = 1 << 24;
+    pub const USE_VAD: u64 = 1 << 25;
+    pub const CHANGE_NICKNAME: u64 = 1 << 26;
+    pub const MANAGE_NICKNAMES: u64 = 1 << 27;
+    pub const MANAGE_ROLES: u64 = 1 << 28;
+    pub const MANAGE_WEBHOOKS: u64 = 1 << 29;
+    pub const MANAGE_EMOJIS_AND_STICKERS: u64 = 1 << 30;
+    pub const USE_APPLICATION_COMMANDS: u64 = 1 << 31;
+    pub const REQUEST_TO_SPEAK: u64 = 1 << 32;
+    pub const MANAGE_EVENTS: u64 = 1 << 33;
+    pub const MANAGE_THREADS: u64 = 1 << 34;
+    pub const CREATE_PUBLIC_THREADS: u64 = 1 << 35;
+    pub const CREATE_PRIVATE_THREADS: u64 = 1 << 36;
+    pub const USE_EXTERNAL_STICKERS: u64 = 1 << 37;
+    pub const SEND_MESSAGES_IN_THREADS: u64 = 1 << 38;
+    pub const START_EMBEDDED_ACTIVITIES: u64 = 1 << 39;
+    pub const MODERATE_MEMBERS: u64 = 1 << 40;
 };
 pub const VOICE = enum(c_int) {
     MICROPHONE = 1 << 0,

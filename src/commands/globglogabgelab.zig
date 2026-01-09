@@ -6,24 +6,48 @@ pub const command: Command = .{
     .name = "globglogabgelab",
     .description = "The Globglogabgelab will sing you a banger from 2016!",
     .onExecute = onExecute,
+    .onAutocomplete = onAutocomplete,
+    .options = &.{
+        .{
+            .name = "video_name",
+            .description = "Chose the video that you want",
+            .autocomplete = true,
+        },
+    },
 };
 
 pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
-    var prng: std.Random.DefaultPrng = .init(interaction.id);
-    const random = prng.random();
+    const video: Video = if (interaction.option(.video_name)) |video_name| video: {
+        std.debug.print("Selected {s}\n", .{video_name});
+        for (Video.videos) |video| {
+            if (std.mem.eql(u8, video.name, video_name)) break :video video;
+        } else break :video Video.videos[0];
+    } else video: {
+        var prng: std.Random.DefaultPrng = .init(interaction.id);
+        const random = prng.random();
+        const video_index = random.int(usize) % Video.videos.len;
+        break :video Video.videos[video_index];
+    };
 
-    const video_index = random.int(usize) % Video.videos.len;
-    const video = Video.videos[video_index];
+    try interaction.respond(client, "{s} {s} [⠀](https://www.youtube.com/watch?v={s})", .{ video.name, video.description orelse "", video.url });
+}
 
-    var buf: [128]u8 = undefined;
-    const content = try std.fmt.bufPrintSentinel(&buf, "{s} {s} [⠀](https://www.youtube.com/watch?v={s})", .{ video.name, video.description orelse "", video.url }, 0);
+pub fn onAutocomplete(client: discord.Client, interaction: Command.Interaction) !void {
+    std.debug.print("video opt: {s}\n", .{interaction.focused() orelse "none"});
+    var choices: [Command.AutocompleteChoice.max_count]Command.AutocompleteChoice = undefined;
+    for (&choices, Video.videos[0..Command.AutocompleteChoice.max_count]) |*choice, video| {
+        choice.* = .{
+            .name = video.name.ptr,
+            .value = video.name.ptr,
+        };
+    }
 
-    try interaction.respond(client, content);
+    try interaction.autocomplete(client, choices[0..]);
 }
 
 pub const Video = struct {
     url: []const u8,
-    name: []const u8,
+    name: [:0]const u8,
     description: ?[]const u8 = null,
 
     const videos: []const @This() = &.{

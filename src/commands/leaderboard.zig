@@ -11,34 +11,41 @@ pub const command: Command = .{
     .onExecute = onExecute,
 };
 
-const leaderboard_count = 5;
+pub const leaderboard_count = 5;
 
 pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
     const app: *App = client.getData(App).?;
 
-    var leaderboard: std.ArrayList(@TypeOf(app.profiles).Entry) = try .initCapacity(app.allocator, @intCast(app.profiles.count()));
+    if (app.profiles.count() == 0) return interaction.respond(client, "Leaderboard is empty", .{});
+
+    var leaderboard: std.ArrayList(Profile) = try .initCapacity(app.allocator, @intCast(app.profiles.count()));
     defer leaderboard.deinit(app.allocator);
 
-    var it = app.profiles.iterator();
-    while (it.next()) |entry| {
-        leaderboard.appendAssumeCapacity(entry);
-    }
+    var it = app.profiles.valueIterator();
+    leaderboard.appendSliceAssumeCapacity(it.items[0..app.profiles.count()]);
 
-    std.sort.block(@TypeOf(app.profiles).Entry, leaderboard.items, {}, struct {
-        pub fn greaterThan(context: void, a: @TypeOf(app.profiles).Entry, b: @TypeOf(app.profiles).Entry) bool {
-            _ = context;
-            return a.value_ptr.xp > b.value_ptr.xp;
+    std.sort.block(Profile, leaderboard.items, {}, struct {
+        pub fn greaterThan(_: void, a: Profile, b: Profile) bool {
+            return a.xp > b.xp;
         }
     }.greaterThan);
 
     var buf: [256]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buf);
     try writer.writeAll("Leaderboard\n");
-    for (leaderboard.items[0..@min(leaderboard_count, leaderboard.items.len)], 0..) |entry, i| {
-        try writer.print("#{d} {s}: {d}xp\n", .{ i + 1, entry.value_ptr.getName(), entry.value_ptr.xp });
+    for (leaderboard.items[0..@min(leaderboard_count, leaderboard.items.len)], 0..) |profile, i| {
+        const emoji = switch (i) {
+            0 => "🥇",
+            1 => "🥈",
+            2 => "🥉",
+            99 => "💯",
+            else => "🏅",
+        };
+
+        try writer.print("{s} <@{d}>: {d}xp\n", .{ emoji, profile.id, profile.xp });
     }
 
     try writer.writeByte(0);
 
-    try interaction.respond(client, @ptrCast(writer.buffered()));
+    try interaction.respond(client, "{s}", .{writer.buffered()});
 }
