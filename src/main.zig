@@ -12,7 +12,7 @@ pub fn logFn(comptime level: std.log.Level, comptime scope: @EnumLiteral(), comp
     std.log.defaultLog(level, scope, format, args);
 }
 
-const data_dir = "data/";
+const data_dir_path = "data/";
 
 pub const Level = struct {
     xp: u64,
@@ -61,14 +61,22 @@ pub const App = struct {
     }
 
     pub fn save(self: *@This()) !void {
+        std.Io.Dir.cwd().access(self.io, data_dir_path, .{}) catch |err|
+            if (err == error.FileNotFound or err == error.AccessDenied)
+                try std.Io.Dir.cwd().createDir(self.io, data_dir_path, .default_dir)
+            else
+                return err;
+
         var it = self.profiles.valueIterator();
         const json = try std.json.Stringify.valueAlloc(self.allocator, it.items[0..self.profiles.count()], .{ .whitespace = .indent_tab });
         defer self.allocator.free(json);
-        try std.Io.Dir.cwd().writeFile(self.io, .{ .sub_path = data_dir ++ "profiles.json", .data = json });
+        try std.Io.Dir.cwd().writeFile(self.io, .{ .sub_path = data_dir_path ++ "profiles.json", .data = json });
     }
 
     pub fn load(self: *@This()) !void {
-        var file = std.Io.Dir.cwd().openFile(self.io, data_dir ++ "profiles.json", .{}) catch |err| if (err == error.FileNotFound) return else return err;
+        const sub_path = data_dir_path ++ "profiles.json";
+
+        const file = std.Io.Dir.cwd().openFile(self.io, sub_path, .{}) catch |err| if (err == error.FileNotFound) return std.log.warn("file {s} not found", .{sub_path}) else return err;
         defer file.close(self.io);
         var buffer: []u8 = try self.allocator.alloc(u8, (try file.stat(self.io)).size);
         defer self.allocator.free(buffer);
@@ -86,7 +94,7 @@ pub const App = struct {
         const scope = std.log.scoped(.role_service);
         const app = client.getData(@This()).?;
 
-        var file = std.Io.Dir.cwd().openFile(app.io, data_dir ++ "level_table.json", .{}) catch |err| if (err == error.FileNotFound) return else return err;
+        var file = std.Io.Dir.cwd().openFile(app.io, data_dir_path ++ "level_table.json", .{}) catch |err| if (err == error.FileNotFound) return else return err;
         defer file.close(app.io);
         var buffer: []u8 = try app.allocator.alloc(u8, (try file.stat(app.io)).size);
         defer app.allocator.free(buffer);
