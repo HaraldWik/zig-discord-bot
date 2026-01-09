@@ -115,6 +115,8 @@ pub const App = struct {
         if (std.mem.containsAtLeast(u8, std.mem.span(event.content), 1, "jimmy")) return discord.Message.create(client, event.channel_id, .{ .content = "Did someone say Jimmy?" }) catch return; // Jimmyfication
 
         const bad_words: []const []const [:0]const u8 = &.{
+            &.{ "67", "6️⃣", "7️⃣" },
+            &.{ "6-7", "6️⃣", "7️⃣" },
             &.{ "std.Io", "🤡" },
             &.{ "typescript", "🤨", "😮", "😰", "🤡", "🤢", "🤮", "🚽", "🤬" },
             &.{ "javascript", "🤨", "😮", "😰", "🤡", "🤢", "🤮", "🚽", "🤬" },
