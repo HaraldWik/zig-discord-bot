@@ -1,6 +1,7 @@
 const std = @import("std");
 const Command = @import("Command.zig");
 const discord = @import("discord");
+const App = @import("../main.zig").App;
 
 pub const command: Command = .{
     .name = "globglogabgelab",
@@ -17,14 +18,24 @@ pub const command: Command = .{
 };
 
 pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void {
+    const app: *App = client.getData(App).?;
+
     const video: Video = video: {
         if (interaction.option(.video_name)) |video_name| for (Video.videos) |video|
             if (std.mem.eql(u8, video.name, video_name)) break :video video;
 
         var prng: std.Random.DefaultPrng = .init(interaction.id);
         const random = prng.random();
-        const video_index = random.int(usize) % Video.videos.len;
-        break :video Video.videos[video_index];
+        const video_index = random.int(usize);
+
+        const now = try std.Io.Clock.real.now(app.io);
+        const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(now.toSeconds()) };
+        const month_day = epoch_seconds.getEpochDay().calculateYearDay().calculateMonthDay();
+
+        const day = month_day.day_index + 1;
+        if (month_day.month == .dec and (day == 24 or day == 25)) break :video Video.christmas[video_index % Video.christmas.len];
+
+        break :video Video.videos[video_index & Video.videos.len];
     };
 
     try interaction.respond(client, "{s} {s} [⠀](https://www.youtube.com/watch?v={s})", .{ video.name, video.description orelse "", video.url });
@@ -115,5 +126,12 @@ pub const Video = struct {
         .{ .url = "oxqCKsUiIWg", .name = "Instrumental" },
         .{ .url = "h6EuSlzO4m0", .name = "Ends it all" },
         .{ .url = "aTtnRjRJstc", .name = "Spiderman" },
+        .{ .url = "JRGU7Ud9Z-4", .name = "Mans NOT Glob" },
+    };
+
+    const christmas: []const @This() = &.{
+        .{ .url = "qK5NouESumI", .name = "Greetings from Globglogabgalab" },
+        .{ .url = "52Li3SLj1gE", .name = "Deck the Halls" },
+        .{ .url = "MS_F4-3YK-U", .name = "Jingle bells rock" },
     };
 };

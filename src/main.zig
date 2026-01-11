@@ -8,8 +8,44 @@ pub const std_options: std.Options = .{
 };
 
 pub fn logFn(comptime level: std.log.Level, comptime scope: @EnumLiteral(), comptime format: []const u8, args: anytype) void {
-    // TODO: add timestamp
-    std.log.defaultLog(level, scope, format, args);
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    var buffer: [128]u8 = undefined;
+    const t = std.debug.lockStderr(&buffer).terminal();
+    defer std.debug.unlockStderr();
+
+    if (std.Io.Clock.real.now(io)) |now| {
+        const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(now.toSeconds()) };
+        const month_day = epoch_seconds.getEpochDay().calculateYearDay().calculateMonthDay();
+
+        t.setColor(.dim) catch {};
+        t.writer.print("{t} {d} {d}:{d}:{d} ", .{
+            month_day.month,
+            month_day.day_index + 1,
+            epoch_seconds.getDaySeconds().getHoursIntoDay(),
+            epoch_seconds.getDaySeconds().getMinutesIntoHour(),
+            epoch_seconds.getDaySeconds().getSecondsIntoMinute(),
+        }) catch {};
+        t.setColor(.reset) catch {};
+    } else |_| {}
+
+    t.setColor(switch (level) {
+        .err => .red,
+        .warn => .yellow,
+        .info => .green,
+        .debug => .magenta,
+    }) catch {};
+    t.setColor(.bold) catch {};
+    t.writer.writeAll(level.asText()) catch {};
+    t.setColor(.reset) catch {};
+    t.setColor(.dim) catch {};
+    t.setColor(.bold) catch {};
+    if (scope != .default) t.writer.print("({t})", .{scope}) catch {};
+    t.writer.writeAll(": ") catch {};
+    t.setColor(.reset) catch {};
+    t.writer.print(format ++ "\n", args) catch {};
 }
 
 const data_dir_path = "data/";
