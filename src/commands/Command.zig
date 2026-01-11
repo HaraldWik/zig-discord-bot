@@ -98,6 +98,15 @@ pub const Interaction = struct {
                 const opt_name_index: usize = for (self.command.?.options, 0..) |opt, i| {
                     if (std.mem.eql(u8, std.mem.span(opt.name), @tagName(name))) break i;
                 } else return null;
+                {
+                    var it = std.mem.splitScalar(u8, std.mem.span(interaction.content[message_command_prefix.len + self.inner.name().len ..]), '"');
+                    var i: usize = 0;
+                    _ = it.next() orelse return null;
+                    while (it.next()) |str| : (i += 1) {
+                        if (i > opt_name_index) return null;
+                        if (i == opt_name_index) return str;
+                    }
+                }
 
                 var it = std.mem.splitScalar(u8, std.mem.span(interaction.content[message_command_prefix.len + self.inner.name().len ..]), ' ');
                 var i: usize = 0;
