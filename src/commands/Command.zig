@@ -107,13 +107,14 @@ pub const Interaction = struct {
                         if (i == opt_name_index) return str;
                     }
                 }
-
-                var it = std.mem.splitScalar(u8, std.mem.span(interaction.content[message_command_prefix.len + self.inner.name().len ..]), ' ');
-                var i: usize = 0;
-                _ = it.next() orelse return null;
-                while (it.next()) |str| : (i += 1) {
-                    if (i > opt_name_index) return null;
-                    if (i == opt_name_index) return str;
+                {
+                    var it = std.mem.splitScalar(u8, std.mem.span(interaction.content[message_command_prefix.len + self.inner.name().len ..]), ' ');
+                    var i: usize = 0;
+                    _ = it.next() orelse return null;
+                    while (it.next()) |str| : (i += 1) {
+                        if (i > opt_name_index) return null;
+                        if (i == opt_name_index) return str;
+                    }
                 }
                 return null;
             },
