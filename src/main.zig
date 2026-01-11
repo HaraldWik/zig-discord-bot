@@ -32,19 +32,13 @@ pub const Profile = struct {
     xp: u64 = 0,
     level: u8 = 0,
 
-    pub const balance = struct {
-        const xp_per_message: u64 = 2;
-        const xp_per_reaction: u64 = 1;
-        const cooldown_s = std.time.ns_per_ms * 3767;
-    };
-
     pub fn handleXp(self: *@This(), app: *App) bool {
         const cooldown = app.cooldowns.getPtr(self.id) orelse {
             app.cooldowns.put(app.allocator, self.id, std.time.Instant.now() catch std.mem.zeroes(std.time.Instant)) catch unreachable;
             return true;
         };
         const now = std.time.Instant.now() catch unreachable;
-        const state = now.since(cooldown.*) > balance.cooldown_s;
+        const state = now.since(cooldown.*) > app.xp_balance.cooldown_ns;
         if (state) cooldown.* = now;
         return state;
     }
@@ -55,6 +49,14 @@ pub const App = struct {
     io: std.Io,
     profiles: std.AutoHashMapUnmanaged(discord.u64snowflake, Profile) = .empty,
     cooldowns: std.AutoHashMapUnmanaged(discord.u64snowflake, std.time.Instant) = .empty,
+    xp_balance: XpBalance = .{},
+    ready: bool = false,
+
+    pub const XpBalance = struct {
+        xp_per_message: u64 = 2,
+        xp_per_reaction: u64 = 1,
+        cooldown_ns: u64 = 376700,
+    };
 
     pub fn close(self: *@This()) void {
         self.profiles.deinit(self.allocator);
@@ -68,47 +70,77 @@ pub const App = struct {
                 return err;
 
         var it = self.profiles.valueIterator();
-        const json = try std.json.Stringify.valueAlloc(self.allocator, it.items[0..self.profiles.count()], .{ .whitespace = .indent_tab });
+        var profiles: std.ArrayList(Profile) = try .initCapacity(self.allocator, @intCast(self.profiles.count()));
+        defer profiles.deinit(self.allocator);
+
+        while (it.next()) |profile| {
+            try profiles.append(self.allocator, profile.*);
+        }
+
+        const json = try std.json.Stringify.valueAlloc(self.allocator, profiles.items, .{ .whitespace = .indent_tab });
         defer self.allocator.free(json);
         try std.Io.Dir.cwd().writeFile(self.io, .{ .sub_path = data_dir_path ++ "profiles.json", .data = json });
     }
 
     pub fn load(self: *@This()) !void {
+        try self.loadXpBalance();
+
         const sub_path = data_dir_path ++ "profiles.json";
 
-        const file = std.Io.Dir.cwd().openFile(self.io, sub_path, .{}) catch |err| if (err == error.FileNotFound) return std.log.warn("file {s} not found", .{sub_path}) else return err;
-        defer file.close(self.io);
-        var buffer: []u8 = try self.allocator.alloc(u8, (try file.stat(self.io)).size);
-        defer self.allocator.free(buffer);
-        var reader = file.reader(self.io, buffer);
-        const slice = try reader.interface.take(buffer.len);
+        std.Io.Dir.cwd().access(self.io, sub_path, .{}) catch return;
 
-        const parsed: std.json.Parsed([]Profile) = try std.json.parseFromSlice([]Profile, self.allocator, slice, .{});
+        const file = try std.Io.Dir.cwd().readFileAlloc(self.io, sub_path, self.allocator, .unlimited);
+        if (file.len == 0) return;
+
+        const parsed: std.json.Parsed([]Profile) = try std.json.parseFromSlice([]Profile, self.allocator, file, .{});
         defer parsed.deinit();
         for (parsed.value) |profile| {
             try self.profiles.put(self.allocator, profile.id, profile);
         }
     }
 
-    pub fn roleService(client: discord.Client) !void {
+    fn loadXpBalance(self: *@This()) !void {
+        const sub_path = data_dir_path ++ "xp_balance.json";
+
+        std.Io.Dir.cwd().access(self.io, sub_path, .{}) catch return std.log.warn("{s} not found. Will use defaults", .{sub_path});
+
+        const file = try std.Io.Dir.cwd().readFileAlloc(self.io, sub_path, self.allocator, .unlimited);
+
+        const parsed: std.json.Parsed(XpBalance) = try std.json.parseFromSlice(XpBalance, self.allocator, file, .{});
+        defer parsed.deinit();
+        self.xp_balance = parsed.value;
+    }
+
+    pub fn ensureProfile(self: *@This(), user_id: u64) void {
+        if (self.profiles.get(user_id) == null) {
+            self.profiles.put(self.allocator, user_id, .{ .id = user_id }) catch |err| std.log.err("{t} while adding new profile", .{err});
+            std.log.info("added new profile: {d} {any}", .{ user_id, self.profiles.get(user_id) });
+        }
+    }
+
+    pub fn levelService(client: discord.Client) !void {
         const scope = std.log.scoped(.role_service);
+        const sub_path = data_dir_path ++ "level_table.json";
         const app = client.getData(@This()).?;
 
-        var file = std.Io.Dir.cwd().openFile(app.io, data_dir_path ++ "level_table.json", .{}) catch |err| if (err == error.FileNotFound) return else return err;
-        defer file.close(app.io);
-        var buffer: []u8 = try app.allocator.alloc(u8, (try file.stat(app.io)).size);
-        defer app.allocator.free(buffer);
-        var reader = file.reader(app.io, buffer);
-        const slice = try reader.interface.take(buffer.len);
+        std.Io.Dir.cwd().access(app.io, sub_path, .{}) catch return scope.warn("{s} not found. Level system will be turned off", .{sub_path});
 
-        const storage: std.json.Parsed(Level.Storage) = try std.json.parseFromSlice(Level.Storage, app.allocator, slice, .{});
+        const storage: std.json.Parsed(Level.Storage) = storage: {
+            const slice = try std.Io.Dir.cwd().readFileAlloc(app.io, sub_path, app.allocator, .unlimited);
+            defer app.allocator.free(slice);
+
+            break :storage try std.json.parseFromSlice(Level.Storage, app.allocator, slice, .{});
+        };
         defer storage.deinit();
+
+        while (!app.ready) {}
+        std.log.info("started: level service loop", .{});
 
         while (true) {
             var it = app.profiles.valueIterator();
             while (it.next()) |profile| {
-                for (storage.value.table, 0..) |element, i| {
-                    if (profile.level > i or profile.xp < element.xp) continue;
+                for (storage.value.table, 0..) |element, level| {
+                    if (profile.level > level or profile.xp < element.xp) continue;
                     if (element.role_id) |role_id| client.addGuildMemberRole(storage.value.guild_id, profile.id, role_id, &.{ .reason = "level up" }, null).toError() catch |err| {
                         scope.err("{t}: addGuildMemberRole", .{err});
                         continue;
@@ -122,7 +154,7 @@ pub const App = struct {
                     profile.level += 1;
                 }
             }
-            try app.io.sleep(.fromMilliseconds(100), .real);
+            try app.io.sleep(.fromSeconds(1), .real);
         }
     }
 
@@ -130,11 +162,30 @@ pub const App = struct {
         std.log.info("registering commands", .{});
 
         for (Command.commands) |command| {
-            // createGlobalApplicationCommand
-            client.createGuildApplicationCommand(event.application.id, 1377723883612016783, &.{
+            const param: discord.CreateGuildApplicationCommand = .{
+                .type = .NONE,
+                .name = "leaderboard",
+                .description = command.description.ptr,
+            };
+            var sync: discord.ApplicationCommand = .{
+                .type = .NONE,
+            };
+            const sync_ptr: ?*discord.ApplicationCommand = &sync;
+            var ret: discord.ApplicationCommand.Return = .{
+                .sync = sync_ptr,
+            };
+            ret = undefined;
+            client.createGuildApplicationCommand(event.application.id, 1377723883612016783, &param, null).toError() catch |err| {
+                std.log.err("\t{s}: {t}", .{ command.name, err });
+                continue;
+            };
+            // while (sync_ptr == null) std.debug.print("null\n", .{});
+
+            client.createGlobalApplicationCommand(event.application.id, &.{
                 .type = .CHAT_INPUT,
                 .name = command.name.ptr,
                 .description = command.description.ptr,
+                // .options: ApplicationCommand.Options
             }, null).toError() catch |err| {
                 std.log.err("\t{s}: {t}", .{ command.name, err });
                 continue;
@@ -144,9 +195,13 @@ pub const App = struct {
         }
 
         std.log.info("started: {s}", .{event.user.name});
+
+        const app = client.getData(@This()).?;
+        app.ready = true;
     }
 
     pub fn onInteraction(client: discord.Client, interaction: *const discord.Interaction) callconv(.c) void {
+        client.getData(@This()).?.ensureProfile(interaction.user.?.id);
         Command.call(client, .fromInner(.{ .command = interaction }));
     }
 
@@ -157,28 +212,31 @@ pub const App = struct {
 
         const app = client.getData(@This()).?;
 
-        if (app.profiles.get(event.author.id) == null) {
-            app.profiles.put(app.allocator, event.author.id, .{ .id = event.author.id }) catch |err| std.log.err("{t} while adding new profile", .{err});
-        }
+        app.ensureProfile(event.author.id);
 
         const profile = app.profiles.getPtr(event.author.id).?;
         profile.messages += 1;
-        if (profile.handleXp(app)) profile.xp += Profile.balance.xp_per_message;
+        if (profile.handleXp(app)) profile.xp += app.xp_balance.xp_per_message;
 
         app.save() catch |err| std.log.err("saving: {t}", .{err}); // TODO: move this out somewhere better
         if (std.mem.eql(u8, std.mem.span(event.content), "ping")) return discord.Message.create(client, event.channel_id, .{ .content = "pong!" }) catch return;
         if (std.mem.containsAtLeast(u8, std.mem.span(event.content), 1, "jimmy")) return discord.Message.create(client, event.channel_id, .{ .content = "Did someone say Jimmy?" }) catch return; // Jimmyfication
 
-        const bad_words: []const []const [:0]const u8 = &.{
-            &.{ "67", "6️⃣", "7️⃣" },
+        const reaction_table: []const []const [:0]const u8 = &.{
             &.{ "6-7", "6️⃣", "7️⃣" },
             &.{ "std.Io", "🤡" },
-            &.{ "typescript", "🤨", "😮", "😰", "🤡", "🤢", "🤮", "🚽", "🤬" },
-            &.{ "javascript", "🤨", "😮", "😰", "🤡", "🤢", "🤮", "🚽", "🤬" },
-            &.{ "python", "🤢" },
+            &.{ "typescript", "🤨", "😮", "😰" },
+            &.{ "javascript", "🤨", "😮", "😰", "🤡" },
+            &.{ "python", "😰" },
+            &.{ "asm", "😰" },
+            &.{ "raylib", "🤨" },
+
+            &.{ "🔥", "🔥" },
+            &.{ "zig", "🔥" },
+            &.{ "c++", "🙄" },
         };
 
-        for (bad_words) |bad_word| {
+        for (reaction_table) |bad_word| {
             if (std.mem.containsAtLeast(u8, std.mem.span(event.content), 1, bad_word[0])) {
                 for (bad_word[1..]) |emoji| {
                     _ = client.createReaction(event.channel_id, event.id, 0, emoji, null);
@@ -193,7 +251,7 @@ pub const App = struct {
         const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions += 1;
         if (profile.handleXp(app)) {
-            const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
+            const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) app.xp_balance.xp_per_reaction * 2 else app.xp_balance.xp_per_reaction;
             profile.xp +|= amount;
         }
 
@@ -206,7 +264,7 @@ pub const App = struct {
         const profile = app.profiles.getPtr(event.user_id) orelse return;
         profile.reactions -|= 1;
         if (profile.handleXp(app)) {
-            const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) Profile.balance.xp_per_reaction * 2 else Profile.balance.xp_per_reaction;
+            const amount = if (std.mem.eql(u8, std.mem.span(event.emoji.name), "🔥")) app.xp_balance.xp_per_reaction * 2 else app.xp_balance.xp_per_reaction;
             profile.xp -|= amount;
         }
 
@@ -231,13 +289,10 @@ pub fn main() !void {
     defer app.close();
     try app.load();
 
-    const bot_token = std.c.getenv("DISCORD_TOKEN") orelse @embedFile("TOKEN");
+    const bot_token = std.c.getenv("DISCORD_TOKEN") orelse @embedFile("TOKEN2");
 
     const client: discord.Client = discord.init(bot_token) orelse return error.InitDiscordClient;
     defer client.cleanup();
-
-    var role_service_thread: std.Thread = try .spawn(.{ .allocator = allocator }, App.roleService, .{client});
-    defer role_service_thread.join();
 
     const intents =
         discord.GATEWAY.GUILDS |
@@ -255,6 +310,10 @@ pub fn main() !void {
     client.setOnMessageCreate(App.onMessage);
     client.setOnMessageReactionAdd(App.onReactionAdd);
     client.setOnMessageReactionRemove(App.onReactionRemove);
+
+    var role_service_thread: std.Thread = try .spawn(.{ .allocator = allocator }, App.levelService, .{client});
+    defer role_service_thread.join();
+
     try client.run().toError();
 
     try app.save();

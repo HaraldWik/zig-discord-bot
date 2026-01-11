@@ -2110,6 +2110,7 @@ pub const ApplicationCommand = extern struct {
     version: u64snowflake = 0,
 
     pub const Type = enum(c_uint) {
+        NONE = 0, // CUSTOM
         CHAT_INPUT = 1,
         USER = 2,
         MESSAGE = 3,

@@ -6,7 +6,7 @@ const Command = @This();
 name: [:0]const u8,
 description: [:0]const u8,
 onExecute: ?Execute = null,
-onAutocomplete: ?Autocomplete = null, // @import("globglogabgelab.zig").onAutocomplete,
+onAutocomplete: ?Autocomplete = null,
 options: []const discord.ApplicationCommand.Option = &.{},
 
 pub const commands: []const @This() = &.{

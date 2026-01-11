@@ -35,7 +35,10 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
     defer leaderboard.deinit(app.allocator);
 
     var it = app.profiles.valueIterator();
-    leaderboard.appendSliceAssumeCapacity(it.items[0..app.profiles.count()]);
+
+    while (it.next()) |profile| {
+        try leaderboard.append(app.allocator, profile.*);
+    }
 
     std.sort.block(Profile, leaderboard.items, {}, struct {
         pub fn greaterThan(_: void, a: Profile, b: Profile) bool {
@@ -55,7 +58,7 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
             else => "🏅",
         };
 
-        try writer.print("{s} <@{d}>: {d}xp\n", .{ emoji, profile.id, profile.xp });
+        try writer.print("{s} <@{d}>: {d}xp, level: {d}\n", .{ emoji, profile.id, profile.xp, profile.level });
     }
 
     try writer.writeByte(0);
