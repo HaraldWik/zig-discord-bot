@@ -14,6 +14,15 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
     var buf: [256]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buf);
 
+    // try writer.writeAll(
+    //     \\Usage: [command] [options]
+    //     \\__To call a command, you can use either a__
+    //     \\slash command </command_name> or a message command <!command_name>.
+    //     \\
+    //     \\Some options have autocomplete. To use autocomplete with a message command,
+    //     \\type !command_name autocomplete to see the available choices.
+    // );
+
     try writer.writeAll("Commands:\n\n");
     for (Command.commands) |command_| {
         if (std.mem.eql(u8, command_.name, "help")) continue;
