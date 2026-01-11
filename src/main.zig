@@ -162,25 +162,6 @@ pub const App = struct {
         std.log.info("registering commands", .{});
 
         for (Command.commands) |command| {
-            const param: discord.CreateGuildApplicationCommand = .{
-                .type = .NONE,
-                .name = "leaderboard",
-                .description = command.description.ptr,
-            };
-            var sync: discord.ApplicationCommand = .{
-                .type = .NONE,
-            };
-            const sync_ptr: ?*discord.ApplicationCommand = &sync;
-            var ret: discord.ApplicationCommand.Return = .{
-                .sync = sync_ptr,
-            };
-            ret = undefined;
-            client.createGuildApplicationCommand(event.application.id, 1377723883612016783, &param, null).toError() catch |err| {
-                std.log.err("\t{s}: {t}", .{ command.name, err });
-                continue;
-            };
-            // while (sync_ptr == null) std.debug.print("null\n", .{});
-
             client.createGlobalApplicationCommand(event.application.id, &.{
                 .type = .CHAT_INPUT,
                 .name = command.name.ptr,
