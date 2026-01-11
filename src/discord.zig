@@ -2235,7 +2235,7 @@ pub const Interaction = extern struct {
     user: ?*User = null,
     token: [*:0]u8,
     version: c_int = 0,
-    message: [*c]Message = null,
+    message: ?*Message,
     locale: [*c]u8 = null,
     guild_locale: [*c]u8 = null,
 

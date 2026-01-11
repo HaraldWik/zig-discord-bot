@@ -218,7 +218,8 @@ pub const App = struct {
     }
 
     pub fn onInteraction(client: discord.Client, interaction: *const discord.Interaction) callconv(.c) void {
-        client.getData(@This()).?.ensureProfile(interaction.user.?.id);
+        const user = interaction.user orelse if (interaction.member) |member| member.user else null;
+        client.getData(@This()).?.ensureProfile(user.?.id);
         Command.call(client, .fromInner(.{ .command = interaction }));
     }
 

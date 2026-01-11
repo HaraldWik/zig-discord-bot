@@ -26,12 +26,7 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
 
         const video_index: usize = @intCast(interaction.id);
 
-        const now = try std.Io.Clock.real.now(app.io);
-        const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(now.toSeconds()) };
-        const month_day = epoch_seconds.getEpochDay().calculateYearDay().calculateMonthDay();
-
-        const day = month_day.day_index + 1;
-        if (month_day.month == .dec and (day == 24 or day == 25)) break :video Video.christmas[video_index % Video.christmas.len];
+        if (isChistmas(app.io)) break :video Video.christmas[video_index % Video.christmas.len];
 
         break :video Video.videos[video_index % Video.videos.len];
     };
@@ -40,9 +35,13 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
 }
 
 pub fn onAutocomplete(client: discord.Client, interaction: Command.Interaction) !void {
-    std.debug.print("video opt: {s}\n", .{interaction.focused() orelse "none"});
+    const app: *App = client.getData(App).?;
+
+    if (interaction.focused()) |focused| std.debug.print("video opt: name: {s}, value: {s}\n", .{ focused.name, focused.value });
+
     var choices: [Command.AutocompleteChoice.max_count]Command.AutocompleteChoice = undefined;
-    for (&choices, Video.videos[0..Command.AutocompleteChoice.max_count]) |*choice, video| {
+    const video_index: usize = @intCast(Command.AutocompleteChoice.max_count -| (interaction.id % if (isChistmas(app.io)) Video.christmas.len else Video.videos.len));
+    for (&choices, Video.videos[video_index .. video_index + Command.AutocompleteChoice.max_count]) |*choice, video| {
         choice.* = .{
             .name = video.name.ptr,
             .value = video.name.ptr,
@@ -50,6 +49,19 @@ pub fn onAutocomplete(client: discord.Client, interaction: Command.Interaction) 
     }
 
     try interaction.autocomplete(client, choices[0..]);
+}
+
+fn isChistmas(io: std.Io) bool {
+    const now = std.Io.Clock.real.now(io) catch |err| {
+        @branchHint(.cold);
+        std.log.err("{t} isChistmas", .{err});
+        return false;
+    };
+    const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(now.toSeconds()) };
+    const month_day = epoch_seconds.getEpochDay().calculateYearDay().calculateMonthDay();
+
+    const day = month_day.day_index + 1;
+    return month_day.month == .dec and (day == 24 or day == 25);
 }
 
 pub const Video = struct {
