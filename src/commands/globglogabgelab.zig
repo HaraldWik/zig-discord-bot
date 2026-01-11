@@ -24,9 +24,7 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
         if (interaction.option(.video_name)) |video_name| for (Video.videos) |video|
             if (std.mem.eql(u8, video.name, video_name)) break :video video;
 
-        var prng: std.Random.DefaultPrng = .init(interaction.id);
-        const random = prng.random();
-        const video_index = random.int(usize);
+        const video_index: usize = @intCast(interaction.id);
 
         const now = try std.Io.Clock.real.now(app.io);
         const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(now.toSeconds()) };
@@ -35,7 +33,7 @@ pub fn onExecute(client: discord.Client, interaction: Command.Interaction) !void
         const day = month_day.day_index + 1;
         if (month_day.month == .dec and (day == 24 or day == 25)) break :video Video.christmas[video_index % Video.christmas.len];
 
-        break :video Video.videos[video_index & Video.videos.len];
+        break :video Video.videos[video_index % Video.videos.len];
     };
 
     try interaction.respond(client, "{s} {s} [⠀](https://www.youtube.com/watch?v={s})", .{ video.name, video.description orelse "", video.url });
@@ -130,8 +128,8 @@ pub const Video = struct {
     };
 
     const christmas: []const @This() = &.{
-        .{ .url = "qK5NouESumI", .name = "Greetings from Globglogabgalab" },
+        .{ .url = "qK5NouESumI", .name = "Greetings from Globglogabgalab", .description = "👋" },
         .{ .url = "52Li3SLj1gE", .name = "Deck the Halls" },
-        .{ .url = "MS_F4-3YK-U", .name = "Jingle bells rock" },
+        .{ .url = "MS_F4-3YK-U", .name = "Jingle bells rock", .description = "🔔 🔔 🔔" },
     };
 };
